@@ -6,6 +6,11 @@
 
 (ns app.plugins.register
   (:require
+   [app.main.data.event :as ev]
+   [app.main.data.notifications :as ntf]
+   [app.util.i18n :as i18n :refer [tr]]
+   [app.util.globals :as ug]
+   [app.main.refs :as refs]
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.schema :as sm]
@@ -13,7 +18,10 @@
    [app.common.uuid :as uuid]
    [app.main.repo :as rp]
    [app.main.store :as st]
+   [app.plugins.core :as pc]
    [app.util.object :as obj]
+   [potok.v2.core :as ptk]
+   [app.util.globals :refer [global]]
    [beicon.v2.core :as rx]))
 
 ;; Stores the installed plugins information
@@ -115,3 +123,46 @@
   (or (= plugin-id "TEST")
       (let [{:keys [permissions]} (dm/get-in @registry [:data plugin-id])]
         (contains? permissions permission))))
+
+;; Define a predicate that returns true when the workspace is loaded.
+(defn app-loaded? []
+  ;; Adjust the selector as needed (for example, if the workspace element has id "workspace")
+  (boolean (js/document.getElementById "left-sidebar-aside")))
+
+;; Define a polling function that waits until workspace-loaded? returns true.
+(defn wait-for-app [callback]
+  (if (app-loaded?)
+    (callback)
+    (js/requestAnimationFrame #(wait-for-app callback))))
+
+(def default-plugin-manifest-url
+  "http://localhost:4402/manifest.json")
+
+(defn auto-install-and-open-default-plugin []
+  "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded."
+  (-> (js/fetch default-plugin-manifest-url)
+      (.then (fn [response]
+               (.json response)))
+      (.then (fn [manifest]
+               (let [plugin (parse-manifest default-plugin-manifest-url manifest)]
+                 (when plugin
+                   (install-plugin! plugin)
+                   ;; Emit event to signal plugin start (optional)
+                   (st/emit! (ptk/event :app.main.data.event/event
+                                        {:app.main.data.event/name "start-plugin"
+                                         :name (:name plugin)
+                                         :host (:host plugin)}))
+                   ;; Instead of a fixed timeout, wait until the workspace is loaded
+                   (wait-for-app
+                    (fn []
+                      (let [user-can-edit? (:can-edit (deref refs/permissions))]
+                        (pc/open-plugin! plugin))))))))
+      (.catch (fn [err]
+                (js/console.error "Failed to install default plugin:" err)))))
+
+(defn init
+  "Loads stored plugins and auto-installs & opens the default plugin."
+  []
+  (load-from-store)
+  (auto-install-and-open-default-plugin))
+

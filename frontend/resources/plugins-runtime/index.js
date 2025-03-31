@@ -5070,15 +5070,15 @@ class zc extends HTMLElement {
     s.classList.add("header");
     const i = document.createElement("h1");
     i.textContent = r, s.appendChild(i);
-    const c = document.createElement("button");
-    c.setAttribute("type", "button"), c.innerHTML = `<div class="close">${Zc}</div>`, c.addEventListener("click", () => {
-      this.shadowRoot && this.shadowRoot.dispatchEvent(
-        new CustomEvent("close", {
-          composed: !0,
-          bubbles: !0
-        })
-      );
-    }), s.appendChild(c);
+    // const c = document.createElement("button");
+    // c.setAttribute("type", "button"), c.innerHTML = `<div class="close">${Zc}</div>`, c.addEventListener("click", () => {
+    //   this.shadowRoot && this.shadowRoot.dispatchEvent(
+    //     new CustomEvent("close", {
+    //       composed: !0,
+    //       bubbles: !0
+    //     })
+    //   );
+    // }), s.appendChild(c);
     const l = document.createElement("iframe");
     l.src = n, l.allow = "", l.sandbox.add(
       "allow-scripts",
