@@ -1,20 +1,25 @@
 use skia_safe as skia;
 
 mod debug;
+#[cfg(target_arch = "wasm32")]
 mod emscripten;
 mod math;
 mod mem;
+mod performance;
 mod render;
 mod shapes;
 mod state;
 mod utils;
+mod uuid;
 mod view;
+mod wapi;
 mod wasm;
 
 use crate::mem::SerializableResult;
-use crate::shapes::{BoolType, ConstraintH, ConstraintV, TransformEntry, Type};
-
+use crate::shapes::{BoolType, ConstraintH, ConstraintV, StructureEntry, TransformEntry, Type};
 use crate::utils::uuid_from_u32_quartet;
+use crate::uuid::Uuid;
+use indexmap::IndexSet;
 use state::State;
 
 pub(crate) static mut STATE: Option<Box<State>> = None;
@@ -93,11 +98,24 @@ pub extern "C" fn render(timestamp: i32) {
 
 #[no_mangle]
 pub extern "C" fn process_animation_frame(timestamp: i32) {
-    with_state!(state, {
-        state
-            .process_animation_frame(timestamp)
-            .expect("Error processing animation frame");
+    let result = std::panic::catch_unwind(|| {
+        with_state!(state, {
+            state
+                .process_animation_frame(timestamp)
+                .expect("Error processing animation frame");
+        });
     });
+
+    match result {
+        Ok(_) => {}
+        Err(err) => {
+            match err.downcast_ref::<String>() {
+                Some(message) => println!("process_animation_frame error: {}", message),
+                None => println!("process_animation_frame error: {:?}", err),
+            }
+            std::panic::resume_unwind(err);
+        }
+    }
 }
 
 #[no_mangle]
@@ -202,10 +220,30 @@ pub extern "C" fn add_shape_child(a: u32, b: u32, c: u32, d: u32) {
 }
 
 #[no_mangle]
-pub extern "C" fn clear_shape_children() {
+pub extern "C" fn set_children() {
+    let bytes = mem::bytes_or_empty();
+
+    let entries: IndexSet<Uuid> = bytes
+        .chunks(size_of::<<Uuid as SerializableResult>::BytesType>())
+        .map(|data| Uuid::from_bytes(data.try_into().unwrap()))
+        .collect();
+
+    let mut deleted = IndexSet::new();
+
     with_current_shape!(state, |shape: &mut Shape| {
-        shape.clear_children();
+        (_, deleted) = shape.compute_children_differences(&entries);
+        shape.children = entries.clone();
     });
+
+    with_state!(state, {
+        for id in deleted {
+            state.delete_shape(id);
+        }
+    });
+
+    if !bytes.is_empty() {
+        mem::free_bytes();
+    }
 }
 
 #[no_mangle]
@@ -570,8 +608,30 @@ pub extern "C" fn propagate_modifiers() -> *mut u8 {
 }
 
 #[no_mangle]
+pub extern "C" fn set_structure_modifiers() {
+    let bytes = mem::bytes();
+
+    let entries: Vec<_> = bytes
+        .chunks(40)
+        .map(|data| StructureEntry::from_bytes(data.try_into().unwrap()))
+        .collect();
+
+    with_state!(state, {
+        for entry in entries {
+            if !state.structure.contains_key(&entry.parent) {
+                state.structure.insert(entry.parent, Vec::new());
+            }
+            state.structure.get_mut(&entry.parent).unwrap().push(entry);
+        }
+    });
+
+    mem::free_bytes();
+}
+
+#[no_mangle]
 pub extern "C" fn clean_modifiers() {
     with_state!(state, {
+        state.structure.clear();
         state.modifiers.clear();
     });
 }
@@ -589,10 +649,7 @@ pub extern "C" fn set_modifiers() {
         for entry in entries {
             state.modifiers.insert(entry.id, entry.transform);
         }
-        // TODO: Do a more specific rebuild of tiles. For
-        // example: using only the selected shapes to rebuild
-        // the tiles affected by the selected shapes.
-        state.rebuild_tiles();
+        state.rebuild_modifier_tiles();
     });
 }
 
@@ -618,6 +675,13 @@ pub extern "C" fn add_shape_shadow(
 pub extern "C" fn clear_shape_shadows() {
     with_current_shape!(state, |shape: &mut Shape| {
         shape.clear_shadows();
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn update_shape_tiles() {
+    with_state!(state, {
+        state.update_tile_for_current_shape();
     });
 }
 
@@ -799,5 +863,6 @@ pub extern "C" fn set_grid_cells() {
 }
 
 fn main() {
+    #[cfg(target_arch = "wasm32")]
     init_gl!();
 }

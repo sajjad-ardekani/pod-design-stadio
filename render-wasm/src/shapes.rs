@@ -1,9 +1,8 @@
 use skia_safe::{self as skia};
 
-use std::collections::HashMap;
-use uuid::Uuid;
-
 use crate::render::BlendMode;
+use crate::uuid::Uuid;
+use std::collections::{HashMap, HashSet};
 
 mod blurs;
 mod bools;
@@ -41,6 +40,10 @@ pub use transform::*;
 
 use crate::math;
 use crate::math::{Bounds, Matrix, Point};
+use indexmap::IndexSet;
+
+const MIN_VISIBLE_SIZE: f32 = 2.0;
+const ANTIALIAS_THRESHOLD: f32 = 15.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -157,7 +160,7 @@ pub struct Shape {
     pub id: Uuid,
     pub parent_id: Option<Uuid>,
     pub shape_type: Type,
-    pub children: Vec<Uuid>,
+    pub children: IndexSet<Uuid>,
     pub selrect: math::Rect,
     pub transform: Matrix,
     pub rotation: f32,
@@ -182,7 +185,7 @@ impl Shape {
             id,
             parent_id: None,
             shape_type: Type::Rect(Rect::default()),
-            children: Vec::<Uuid>::new(),
+            children: IndexSet::<Uuid>::new(),
             selrect: math::Rect::new_empty(),
             transform: Matrix::default(),
             rotation: 0.,
@@ -429,11 +432,16 @@ impl Shape {
     }
 
     pub fn add_child(&mut self, id: Uuid) {
-        self.children.push(id);
+        self.children.insert(id);
     }
 
-    pub fn clear_children(&mut self) {
-        self.children.clear();
+    pub fn compute_children_differences(
+        &mut self,
+        children: &IndexSet<Uuid>,
+    ) -> (IndexSet<Uuid>, IndexSet<Uuid>) {
+        let added = children.difference(&self.children).cloned().collect();
+        let removed = self.children.difference(children).cloned().collect();
+        (added, removed)
     }
 
     pub fn fills(&self) -> std::slice::Iter<Fill> {
@@ -572,6 +580,20 @@ impl Shape {
         self.hidden
     }
 
+    pub fn width(&self) -> f32 {
+        self.selrect.width()
+    }
+
+    pub fn visually_insignificant(&self, scale: f32) -> bool {
+        self.selrect.width() * scale < MIN_VISIBLE_SIZE
+            || self.selrect.height() * scale < MIN_VISIBLE_SIZE
+    }
+
+    pub fn should_use_antialias(&self, scale: f32) -> bool {
+        self.selrect.width() * scale > ANTIALIAS_THRESHOLD
+            || self.selrect.height() * scale > ANTIALIAS_THRESHOLD
+    }
+
     // TODO: Maybe store this inside the shape
     pub fn bounds(&self) -> Bounds {
         let mut bounds = Bounds::new(
@@ -637,17 +659,17 @@ impl Shape {
         self.children.first()
     }
 
-    pub fn children_ids(&self) -> Vec<Uuid> {
+    pub fn children_ids(&self) -> IndexSet<Uuid> {
         if let Type::Bool(_) = self.shape_type {
-            vec![]
+            IndexSet::<Uuid>::new()
         } else if let Type::Group(group) = self.shape_type {
             if group.masked {
-                self.children[1..self.children.len()].to_vec()
+                self.children.iter().skip(1).cloned().collect()
             } else {
-                self.children.clone()
+                self.children.clone().into_iter().collect()
             }
         } else {
-            self.children.clone()
+            self.children.clone().into_iter().collect()
         }
     }
 
@@ -833,6 +855,40 @@ impl Shape {
 
     pub fn has_fills(&self) -> bool {
         !self.fills.is_empty()
+    }
+}
+
+/*
+  Returns the list of children taking into account the structure modifiers
+*/
+pub fn modified_children_ids(
+    element: &Shape,
+    structure: Option<&Vec<StructureEntry>>,
+) -> IndexSet<Uuid> {
+    if let Some(structure) = structure {
+        let mut result: Vec<Uuid> = Vec::from_iter(element.children_ids().iter().map(|id| *id));
+        let mut to_remove = HashSet::<&Uuid>::new();
+
+        for st in structure {
+            match st.entry_type {
+                StructureEntryType::AddChild => {
+                    result.insert(st.index as usize, st.id);
+                }
+                StructureEntryType::RemoveChild => {
+                    to_remove.insert(&st.id);
+                }
+            }
+        }
+
+        let ret: IndexSet<Uuid> = result
+            .iter()
+            .filter(|id| !to_remove.contains(id))
+            .map(|id| *id)
+            .collect();
+
+        ret
+    } else {
+        element.children_ids()
     }
 }
 
