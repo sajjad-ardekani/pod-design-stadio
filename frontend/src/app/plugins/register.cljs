@@ -136,7 +136,7 @@
     (js/requestAnimationFrame #(wait-for-app callback))))
 
 (def default-plugin-manifest-url
-  "https://design.sweelux.com/react-plugin/manifest.json")
+  "http://localhost:4402/manifest.json")
 
 (defn auto-install-and-open-default-plugin []
   "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded."
