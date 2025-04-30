@@ -128,8 +128,8 @@
                   :testOnBorrow true
                   :evictionRunIntervalMillis 5000
                   :numTestsPerEvictionRun 5
-                  ;; :acquireTimeoutMillis 120000 ; 2min
-                  :acquireTimeoutMillis 10000 ; 10 s
+                  :acquireTimeoutMillis 120000 ; 2min
+                  ;;:acquireTimeoutMillis 10000 ; 10 s
                   :idleTimeoutMillis 10000}]
 
     (l/info :hint "initializing browser pool" :opts opts)
