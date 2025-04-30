@@ -49,7 +49,7 @@
 
 (defn wait-for
   ([locator] (wait-for locator nil))
-  ([locator {:keys [state timeout] :or {state "visible" timeout 10000}}]
+  ([locator {:keys [state timeout] :or {state "visible" timeout 120000}}]
    (.waitFor ^js locator #js {:state state :timeout timeout})))
 
 (defn screenshot
