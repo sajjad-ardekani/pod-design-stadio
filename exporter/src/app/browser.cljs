@@ -130,7 +130,7 @@
                   :numTestsPerEvictionRun 5
                   :acquireTimeoutMillis 120000 ; 2min
                   ;;:acquireTimeoutMillis 10000 ; 10 s
-                  :idleTimeoutMillis 10000}]
+                  :idleTimeoutMillis 120000}]
 
     (l/info :hint "initializing browser pool" :opts opts)
     (reset! pool (gp/createPool browser-pool-factory opts))
