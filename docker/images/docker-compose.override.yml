@@ -3,3 +3,6 @@ version: '3.8'
 services:
   penpot-frontend:
     image: sajjadardekani/penpot-frontend:custom
+
+  penpot-exporter:
+    image: sajjadardekani/penpot-exporter:custom
