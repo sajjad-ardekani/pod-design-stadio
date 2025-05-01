@@ -49,7 +49,7 @@
 
 (defn wait-for
   ([locator] (wait-for locator nil))
-  ([locator {:keys [state timeout] :or {state "visible" timeout 120000}}]
+  ([locator {:keys [state timeout] :or {state "visible" timeout 10000}}]
    (.waitFor ^js locator #js {:state state :timeout timeout})))
 
 (defn screenshot
@@ -128,9 +128,9 @@
                   :testOnBorrow true
                   :evictionRunIntervalMillis 5000
                   :numTestsPerEvictionRun 5
-                  :acquireTimeoutMillis 120000 ; 2min
-                  ;;:acquireTimeoutMillis 10000 ; 10 s
-                  :idleTimeoutMillis 120000}]
+                  ;; :acquireTimeoutMillis 120000 ; 2min
+                  :acquireTimeoutMillis 10000 ; 10 s
+                  :idleTimeoutMillis 10000}]
 
     (l/info :hint "initializing browser pool" :opts opts)
     (reset! pool (gp/createPool browser-pool-factory opts))
