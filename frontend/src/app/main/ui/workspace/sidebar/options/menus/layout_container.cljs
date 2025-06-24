@@ -1000,147 +1000,148 @@
         on-hide-dropdown
         (mf/use-fn #(reset! show-dropdown* false))]
 
-    [:div {:class (stl/css :element-set) :data-testid "inspect-layout"}
-     [:div {:class (stl/css :element-title)}
-      [:& title-bar
-       {:collapsable has-layout?
-        :collapsed (not open?)
-        :on-collapsed on-toggle-visibility
-        :title "Layout"
-        :class (stl/css-case :title-spacing-layout (not has-layout?))}
-
-       (if (and (not multiple) (:layout values))
-         [:div {:class (stl/css :title-actions)}
-          [:> icon-button* {:variant "ghost"
-                            :aria-label (tr "workspace.shape.menu.add-layout")
-                            :on-click on-toggle-dropdown-visibility
-                            :icon "menu"}]
-
-          [:& dropdown {:show show-dropdown?
-                        :on-close on-hide-dropdown}
-           [:div {:class (stl/css :layout-options)}
-            [:button {:class (stl/css :layout-option)
-                      :data-type "flex"
-                      :on-click on-add-layout}
-             "Flex layout"]
-            [:button {:class (stl/css :layout-option)
-                      :data-type "grid"
-                      :on-click on-add-layout}
-             "Grid layout"]]]
-
-          (when has-layout?
-            [:> icon-button* {:variant "ghost"
-                              :aria-label (tr "workspace.shape.menu.remove-layout")
-                              :on-click on-remove-layout
-                              :icon "remove"}])]
-
-         [:div {:class (stl/css :title-actions)}
-          [:> icon-button* {:variant "ghost"
-                            :aria-label (tr "workspace.shape.menu.add-layout")
-                            :on-click on-toggle-dropdown-visibility
-                            :icon "add"}]
-
-          [:& dropdown {:show show-dropdown?
-                        :on-close on-hide-dropdown}
-           [:div {:class (stl/css :layout-options)}
-            [:button {:class (stl/css :layout-option)
-                      :data-type "flex"
-                      :on-click on-add-layout}
-             "Flex layout"]
-            [:button {:class (stl/css :layout-option)
-                      :data-type "grid"
-                      :on-click on-add-layout}
-             "Grid layout"]]]
-
-          (when has-layout?
-            [:> icon-button* {:variant "ghost"
-                              :aria-label (tr "workspace.shape.menu.delete")
-                              :on-click on-remove-layout
-                              :icon "remove"}])])]]
-
-     (when (and ^boolean open?
-                ^boolean has-layout?
-                (not= :multiple layout-type))
-       (case layout-type
-         :flex
-         [:div  {:class (stl/css :flex-layout-menu)}
-          [:div {:class (stl/css :first-row)}
-           [:& align-row {:is-column is-column
-                          :value align-items
-                          :on-change set-align-items}]
-
-           [:& direction-row-flex {:on-change on-direction-change
-                                   :value saved-dir}]
-
-           [:& wrap-row {:wrap-type wrap-type
-                         :on-click toggle-wrap}]]
-
-          [:div {:class (stl/css :second-row :help-button-wrapper)}
-           [:& justify-content-row {:is-column is-column
-                                    :justify-content justify-content
-                                    :on-change set-justify-content}]
-
-           [:> icon-button* {:variant "ghost"
-                             :aria-label (tr "labels.help-center")
-                             :on-click open-flex-help
-                             :icon "help"}]]
-          (when (= :wrap wrap-type)
-            [:div {:class (stl/css :third-row)}
-             [:& align-content-row {:is-column is-column
-                                    :value align-content
-                                    :on-change on-align-content-change}]])
-          [:div {:class (stl/css :forth-row)}
-           [:& gap-section {:is-column is-column
-                            :wrap-type wrap-type
-                            :on-change on-gap-change
-                            :value (:layout-gap values)}]
-
-           [:& padding-section {:value (:layout-padding values)
-                                :type (:layout-padding-type values)
-                                :on-type-change on-padding-type-change
-                                :on-change on-padding-change}]]]
-
-         :grid
-         [:div {:class (stl/css :grid-layout-menu)}
-          (when (= 1 (count ids))
-            [:div {:class (stl/css :edit-grid-wrapper)}
-             [:& grid-edit-mode {:id (first ids)}]
-             [:> icon-button* {:variant "ghost"
-                               :aria-label (tr "labels.help-center")
-                               :on-click open-grid-help
-                               :icon "help"}]])
-
-          [:div {:class (stl/css :first-row)}
-           [:div {:class (stl/css :direction-edit)}
-            [:div {:class (stl/css :direction)}
-             [:& direction-row-grid {:value saved-grid-dir
-                                     :on-change on-direction-change}]]]
-
-           [:& align-grid-row {:is-column false
-                               :value align-items-row
-                               :on-change on-row-align-change}]
-           [:& align-grid-row {:is-column true
-                               :value align-items-column
-                               :on-change on-column-align-change}]]
-
-          [:div {:class (stl/css :row :grid-layout-align)}
-           [:& justify-grid-row {:is-column true
-                                 :value grid-justify-content-column
-                                 :on-change on-column-justify-change}]
-           [:& justify-grid-row {:is-column false
-                                 :value grid-justify-content-row
-                                 :on-change on-row-justify-change}]]
-
-          [:div {:class (stl/css :gap-row)}
-           [:& gap-section {:on-change on-gap-change
-                            :value (:layout-gap values)}]]
-          [:div {:class (stl/css :padding-row)}
-           [:& padding-section {:value (:layout-padding values)
-                                :type (:layout-padding-type values)
-                                :on-type-change on-padding-type-change
-                                :on-change on-padding-change}]]]
-
-         nil))]))
+;;     [:div {:class (stl/css :element-set) :data-testid "inspect-layout"}
+;;      [:div {:class (stl/css :element-title)}
+;;       [:& title-bar
+;;        {:collapsable has-layout?
+;;         :collapsed (not open?)
+;;         :on-collapsed on-toggle-visibility
+;;         :title "Layout"
+;;         :class (stl/css-case :title-spacing-layout (not has-layout?))}
+;;
+;;        (if (and (not multiple) (:layout values))
+;;          [:div {:class (stl/css :title-actions)}
+;;           [:> icon-button* {:variant "ghost"
+;;                             :aria-label (tr "workspace.shape.menu.add-layout")
+;;                             :on-click on-toggle-dropdown-visibility
+;;                             :icon "menu"}]
+;;
+;;           [:& dropdown {:show show-dropdown?
+;;                         :on-close on-hide-dropdown}
+;;            [:div {:class (stl/css :layout-options)}
+;;             [:button {:class (stl/css :layout-option)
+;;                       :data-type "flex"
+;;                       :on-click on-add-layout}
+;;              "Flex layout"]
+;;             [:button {:class (stl/css :layout-option)
+;;                       :data-type "grid"
+;;                       :on-click on-add-layout}
+;;              "Grid layout"]]]
+;;
+;;           (when has-layout?
+;;             [:> icon-button* {:variant "ghost"
+;;                               :aria-label (tr "workspace.shape.menu.remove-layout")
+;;                               :on-click on-remove-layout
+;;                               :icon "remove"}])]
+;;
+;;          [:div {:class (stl/css :title-actions)}
+;;           [:> icon-button* {:variant "ghost"
+;;                             :aria-label (tr "workspace.shape.menu.add-layout")
+;;                             :on-click on-toggle-dropdown-visibility
+;;                             :icon "add"}]
+;;
+;;           [:& dropdown {:show show-dropdown?
+;;                         :on-close on-hide-dropdown}
+;;            [:div {:class (stl/css :layout-options)}
+;;             [:button {:class (stl/css :layout-option)
+;;                       :data-type "flex"
+;;                       :on-click on-add-layout}
+;;              "Flex layout"]
+;;             [:button {:class (stl/css :layout-option)
+;;                       :data-type "grid"
+;;                       :on-click on-add-layout}
+;;              "Grid layout"]]]
+;;
+;;           (when has-layout?
+;;             [:> icon-button* {:variant "ghost"
+;;                               :aria-label (tr "workspace.shape.menu.delete")
+;;                               :on-click on-remove-layout
+;;                               :icon "remove"}])])]]
+;;
+;;      (when (and ^boolean open?
+;;                 ^boolean has-layout?
+;;                 (not= :multiple layout-type))
+;;        (case layout-type
+;;          :flex
+;;          [:div  {:class (stl/css :flex-layout-menu)}
+;;           [:div {:class (stl/css :first-row)}
+;;            [:& align-row {:is-column is-column
+;;                           :value align-items
+;;                           :on-change set-align-items}]
+;;
+;;            [:& direction-row-flex {:on-change on-direction-change
+;;                                    :value saved-dir}]
+;;
+;;            [:& wrap-row {:wrap-type wrap-type
+;;                          :on-click toggle-wrap}]]
+;;
+;;           [:div {:class (stl/css :second-row :help-button-wrapper)}
+;;            [:& justify-content-row {:is-column is-column
+;;                                     :justify-content justify-content
+;;                                     :on-change set-justify-content}]
+;;
+;;            [:> icon-button* {:variant "ghost"
+;;                              :aria-label (tr "labels.help-center")
+;;                              :on-click open-flex-help
+;;                              :icon "help"}]]
+;;           (when (= :wrap wrap-type)
+;;             [:div {:class (stl/css :third-row)}
+;;              [:& align-content-row {:is-column is-column
+;;                                     :value align-content
+;;                                     :on-change on-align-content-change}]])
+;;           [:div {:class (stl/css :forth-row)}
+;;            [:& gap-section {:is-column is-column
+;;                             :wrap-type wrap-type
+;;                             :on-change on-gap-change
+;;                             :value (:layout-gap values)}]
+;;
+;;            [:& padding-section {:value (:layout-padding values)
+;;                                 :type (:layout-padding-type values)
+;;                                 :on-type-change on-padding-type-change
+;;                                 :on-change on-padding-change}]]]
+;;
+;;          :grid
+;;          [:div {:class (stl/css :grid-layout-menu)}
+;;           (when (= 1 (count ids))
+;;             [:div {:class (stl/css :edit-grid-wrapper)}
+;;              [:& grid-edit-mode {:id (first ids)}]
+;;              [:> icon-button* {:variant "ghost"
+;;                                :aria-label (tr "labels.help-center")
+;;                                :on-click open-grid-help
+;;                                :icon "help"}]])
+;;
+;;           [:div {:class (stl/css :first-row)}
+;;            [:div {:class (stl/css :direction-edit)}
+;;             [:div {:class (stl/css :direction)}
+;;              [:& direction-row-grid {:value saved-grid-dir
+;;                                      :on-change on-direction-change}]]]
+;;
+;;            [:& align-grid-row {:is-column false
+;;                                :value align-items-row
+;;                                :on-change on-row-align-change}]
+;;            [:& align-grid-row {:is-column true
+;;                                :value align-items-column
+;;                                :on-change on-column-align-change}]]
+;;
+;;           [:div {:class (stl/css :row :grid-layout-align)}
+;;            [:& justify-grid-row {:is-column true
+;;                                  :value grid-justify-content-column
+;;                                  :on-change on-column-justify-change}]
+;;            [:& justify-grid-row {:is-column false
+;;                                  :value grid-justify-content-row
+;;                                  :on-change on-row-justify-change}]]
+;;
+;;           [:div {:class (stl/css :gap-row)}
+;;            [:& gap-section {:on-change on-gap-change
+;;                             :value (:layout-gap values)}]]
+;;           [:div {:class (stl/css :padding-row)}
+;;            [:& padding-section {:value (:layout-padding values)
+;;                                 :type (:layout-padding-type values)
+;;                                 :on-type-change on-padding-type-change
+;;                                 :on-change on-padding-change}]]]
+;;
+;;          nil))]
+         ))
 
 (mf/defc grid-layout-edition
   {::mf/memo #{:ids :values}

@@ -7864,7 +7864,7 @@ msgstr "Open version menu"
 msgid "workspace.versions.warning.subtext"
 msgstr ""
 "If you'd like to increase this limit, write to us at "
-"[support@penpot.app](%s)"
+"[support@podconverge.com](%s)"
 
 #: src/app/main/ui/workspace/sidebar/versions.cljs:368
 msgid "workspace.versions.warning.text"

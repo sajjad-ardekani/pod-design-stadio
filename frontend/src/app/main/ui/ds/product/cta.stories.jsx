@@ -24,7 +24,7 @@ export default {
       >
         If you’d like to increase this limit, write to us at{" "}
         <a style={{ color: "var(--color-accent-primary)" }} href="#">
-          support@penpot.app
+          support@podconverge.com
         </a>
       </span>
     </Cta>

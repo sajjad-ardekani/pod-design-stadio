@@ -204,12 +204,12 @@
 
      [:> menu-entry* {:title (tr "workspace.shape.menu.copy-paste-as")
                       :on-pointer-enter (when (cf/check-browser? :chrome) handle-hover-copy-paste)}
-      [:> menu-entry* {:title (tr "workspace.shape.menu.copy-css")
-                       :on-click handle-copy-css}]
-      [:> menu-entry* {:title (tr "workspace.shape.menu.copy-css-nested")
-                       :on-click handle-copy-css-nested}]
-      [:> menu-entry* {:title (tr "workspace.shape.menu.copy-svg")
-                       :on-click handle-copy-svg}]
+;;       [:> menu-entry* {:title (tr "workspace.shape.menu.copy-css")
+;;                        :on-click handle-copy-css}]
+;;       [:> menu-entry* {:title (tr "workspace.shape.menu.copy-css-nested")
+;;                        :on-click handle-copy-css-nested}]
+;;       [:> menu-entry* {:title (tr "workspace.shape.menu.copy-svg")
+;;                        :on-click handle-copy-svg}]
 
       [:> menu-separator* {}]
 
@@ -531,15 +531,15 @@
      (when (not any-in-copy?)
        (if (or ^boolean has-flex?
                ^boolean has-grid?)
-         [:div
-          [:> menu-separator* {}]
-          (if has-flex?
-            [:> menu-entry* {:title (tr "workspace.shape.menu.remove-flex")
-                             :shortcut (sc/get-tooltip :toggle-layout-flex)
-                             :on-click on-remove-layout}]
-            [:> menu-entry* {:title (tr "workspace.shape.menu.remove-grid")
-                             :shortcut (sc/get-tooltip :toggle-layout-grid)
-                             :on-click on-remove-layout}])]
+;;          [:div
+;;           [:> menu-separator* {}]
+;;           (if has-flex?
+;;             [:> menu-entry* {:title (tr "workspace.shape.menu.remove-flex")
+;;                              :shortcut (sc/get-tooltip :toggle-layout-flex)
+;;                              :on-click on-remove-layout}]
+;;             [:> menu-entry* {:title (tr "workspace.shape.menu.remove-grid")
+;;                              :shortcut (sc/get-tooltip :toggle-layout-grid)
+;;                              :on-click on-remove-layout}])]
 
          (when (or single? (not any-is-variant?))
            [:div
@@ -551,7 +551,8 @@
             [:> menu-entry* {:title (tr "workspace.shape.menu.add-grid")
                              :shortcut (sc/get-tooltip :toggle-layout-grid)
                              :value "grid"
-                             :on-click on-add-layout}]])))]))
+                             :on-click on-add-layout}]])
+                             ))]))
 
 (mf/defc context-menu-component*
   {:mf/private true}

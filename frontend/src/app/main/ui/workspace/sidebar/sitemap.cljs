@@ -244,11 +244,12 @@
           [:& badge-notification {:is-focus true
                                   :size :small
                                   :content (tr "labels.view-only")}])
-        [:> icon-button* {:variant "ghost"
-                          :class (stl/css :add-page)
-                          :aria-label (tr "workspace.sidebar.sitemap.add-page")
-                          :on-click on-create
-                          :icon "add"}])]
+;;         [:> icon-button* {:variant "ghost"
+;;                           :class (stl/css :add-page)
+;;                           :aria-label (tr "workspace.sidebar.sitemap.add-page")
+;;                           :on-click on-create
+;;                           :icon "add"}]
+                          )]
 
      [:div {:class (stl/css :tool-window-content)}
       [:& pages-list {:file file :key (:id file)}]]]))

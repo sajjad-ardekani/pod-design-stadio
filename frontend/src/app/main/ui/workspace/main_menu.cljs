@@ -50,13 +50,13 @@
    ::mf/wrap [mf/memo]}
   [{:keys [layout on-close]}]
   (let [nav-to-helpc-center
-        (mf/use-fn #(dom/open-new-window "https://help.penpot.app"))
+        (mf/use-fn #(dom/open-new-window "https://podconverge.com/help"))
 
         nav-to-community
         (mf/use-fn #(dom/open-new-window "https://community.penpot.app"))
 
         nav-to-youtube
-        (mf/use-fn #(dom/open-new-window "https://www.youtube.com/c/Penpot"))
+        (mf/use-fn #(dom/open-new-window "https://www.youtube.com/c/podconverge"))
 
         nav-to-templates
         (mf/use-fn #(dom/open-new-window "https://penpot.app/libraries-templates"))
@@ -65,7 +65,7 @@
         (mf/use-fn #(dom/open-new-window "https://github.com/penpot/penpot"))
 
         nav-to-terms
-        (mf/use-fn #(dom/open-new-window "https://penpot.app/terms"))
+        (mf/use-fn #(dom/open-new-window "https://podconverge.com/terms"))
 
         nav-to-feedback
         (mf/use-fn #(st/emit! (dcm/go-to-feedback)))
@@ -106,45 +106,45 @@
                               :id          "file-menu-help-center"}
       [:span {:class (stl/css :item-name)} (tr "labels.help-center")]]
 
-     [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                              :on-click    nav-to-community
-                              :on-key-down (fn [event]
-                                             (when (kbd/enter? event)
-                                               (nav-to-community event)))
-                              :id          "file-menu-community"}
-      [:span {:class (stl/css :item-name)} (tr "labels.community")]]
+;;      [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                               :on-click    nav-to-community
+;;                               :on-key-down (fn [event]
+;;                                              (when (kbd/enter? event)
+;;                                                (nav-to-community event)))
+;;                               :id          "file-menu-community"}
+;;       [:span {:class (stl/css :item-name)} (tr "labels.community")]]
 
-     [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                              :on-click    nav-to-youtube
-                              :on-key-down (fn [event]
-                                             (when (kbd/enter? event)
-                                               (nav-to-youtube event)))
-                              :id          "file-menu-youtube"}
-      [:span {:class (stl/css :item-name)} (tr "labels.tutorials")]]
+;;      [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                               :on-click    nav-to-youtube
+;;                               :on-key-down (fn [event]
+;;                                              (when (kbd/enter? event)
+;;                                                (nav-to-youtube event)))
+;;                               :id          "file-menu-youtube"}
+;;       [:span {:class (stl/css :item-name)} (tr "labels.tutorials")]]
 
-     [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                              :on-click    show-release-notes
-                              :on-key-down (fn [event]
-                                             (when (kbd/enter? event)
-                                               (show-release-notes event)))
-                              :id          "file-menu-release-notes"}
-      [:span {:class (stl/css :item-name)} (tr "labels.release-notes")]]
+;;      [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                               :on-click    show-release-notes
+;;                               :on-key-down (fn [event]
+;;                                              (when (kbd/enter? event)
+;;                                                (show-release-notes event)))
+;;                               :id          "file-menu-release-notes"}
+;;       [:span {:class (stl/css :item-name)} (tr "labels.release-notes")]]
 
-     [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                              :on-click    nav-to-templates
-                              :on-key-down (fn [event]
-                                             (when (kbd/enter? event)
-                                               (nav-to-templates event)))
-                              :id          "file-menu-templates"}
-      [:span {:class (stl/css :item-name)} (tr "labels.libraries-and-templates")]]
+;;      [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                               :on-click    nav-to-templates
+;;                               :on-key-down (fn [event]
+;;                                              (when (kbd/enter? event)
+;;                                                (nav-to-templates event)))
+;;                               :id          "file-menu-templates"}
+;;       [:span {:class (stl/css :item-name)} (tr "labels.libraries-and-templates")]]
 
-     [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                              :on-click    nav-to-github
-                              :on-key-down (fn [event]
-                                             (when (kbd/enter? event)
-                                               (nav-to-github event)))
-                              :id          "file-menu-github"}
-      [:span {:class (stl/css :item-name)} (tr "labels.github-repo")]]
+;;      [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                               :on-click    nav-to-github
+;;                               :on-key-down (fn [event]
+;;                                              (when (kbd/enter? event)
+;;                                                (nav-to-github event)))
+;;                               :id          "file-menu-github"}
+;;       [:span {:class (stl/css :item-name)} (tr "labels.github-repo")]]
 
      [:> dropdown-menu-item* {:class (stl/css :submenu-item)
                               :on-click    nav-to-terms
@@ -272,22 +272,23 @@
       [:span {:class (stl/css :item-name)} (tr "modals.nudge-title")]]
 
 
-     [:> dropdown-menu-item* {:on-click    toggle-theme
-                              :class       (stl/css :submenu-item)
-                              :on-key-down (fn [event]
-                                             (when (kbd/enter? event)
-                                               (toggle-theme event)))
-                              :data-testid   "toggle-theme"
-                              :id          "file-menu-toggle-theme"}
-      [:span {:class (stl/css :item-name)}
-       (case (:theme profile)  ;; default = dark -> light -> system -> dark and so on
-         "default" (tr "workspace.header.menu.toggle-light-theme")
-         "light"   (tr "workspace.header.menu.toggle-system-theme")
-         "system" (tr "workspace.header.menu.toggle-dark-theme")
-         (tr "workspace.header.menu.toggle-light-theme"))]
-      [:span {:class (stl/css :shortcut)}
-       (for [sc (scd/split-sc (sc/get-tooltip :toggle-theme))]
-         [:span {:class (stl/css :shortcut-key) :key sc} sc])]]]))
+;;      [:> dropdown-menu-item* {:on-click    toggle-theme
+;;                               :class       (stl/css :submenu-item)
+;;                               :on-key-down (fn [event]
+;;                                              (when (kbd/enter? event)
+;;                                                (toggle-theme event)))
+;;                               :data-testid   "toggle-theme"
+;;                               :id          "file-menu-toggle-theme"}
+;;       [:span {:class (stl/css :item-name)}
+;;        (case (:theme profile)  ;; default = dark -> light -> system -> dark and so on
+;;          "default" (tr "workspace.header.menu.toggle-light-theme")
+;;          "light"   (tr "workspace.header.menu.toggle-system-theme")
+;;          "system" (tr "workspace.header.menu.toggle-dark-theme")
+;;          (tr "workspace.header.menu.toggle-light-theme"))]
+;;       [:span {:class (stl/css :shortcut)}
+;;        (for [sc (scd/split-sc (sc/get-tooltip :toggle-theme))]
+;;          [:span {:class (stl/css :shortcut-key) :key sc} sc])]]
+         ]))
 
 (mf/defc view-menu*
   {::mf/props :obj
@@ -597,26 +598,26 @@
                                                  :file true)
                        :on-close on-close}
 
-     (if ^boolean shared?
-       (when can-edit
-         [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                                  :on-click    on-remove-shared
-                                  :on-key-down on-remove-shared-key-down
-                                  :id          "file-menu-remove-shared"}
-          [:span {:class (stl/css :item-name)}
-           (tr "dashboard.unpublish-shared")]])
-
-       (when can-edit
-         [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                                  :on-click    on-add-shared
-                                  :on-key-down on-add-shared-key-down
-                                  :id          "file-menu-add-shared"}
-          [:span {:class (stl/css :item-name)}
-           (tr "dashboard.add-shared")]]))
+;;      (if ^boolean shared?
+;;        (when can-edit
+;;          [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                                   :on-click    on-remove-shared
+;;                                   :on-key-down on-remove-shared-key-down
+;;                                   :id          "file-menu-remove-shared"}
+;;           [:span {:class (stl/css :item-name)}
+;;            (tr "dashboard.unpublish-shared")]])
+;;
+;;        (when can-edit
+;;          [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                                   :on-click    on-add-shared
+;;                                   :on-key-down on-add-shared-key-down
+;;                                   :id          "file-menu-add-shared"}
+;;           [:span {:class (stl/css :item-name)}
+;;            (tr "dashboard.add-shared")]]))
 
      (when can-edit
        [:*
-        [:div {:class (stl/css :separator)}]
+;;         [:div {:class (stl/css :separator)}]
 
         [:> dropdown-menu-item* {:class (stl/css :submenu-item)
                                  :on-click    on-pin-version
@@ -655,14 +656,14 @@
         [:span {:class (stl/css :item-name)}
          (tr "dashboard.download-binary-file")]])
 
-     (when (contains? cf/flags :export-file-v3)
-       [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-                                :on-click    on-export-file
-                                :on-key-down on-export-file-key-down
-                                :data-format "binfile-v3"
-                                :id          "file-menu-binary-file"}
-        [:span {:class (stl/css :item-name)}
-         (tr "dashboard.download-binary-file")]])
+;;      (when (contains? cf/flags :export-file-v3)
+;;        [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+;;                                 :on-click    on-export-file
+;;                                 :on-key-down on-export-file-key-down
+;;                                 :data-format "binfile-v3"
+;;                                 :id          "file-menu-binary-file"}
+;;         [:span {:class (stl/css :item-name)}
+;;          (tr "dashboard.download-binary-file")]])
 
      (when-not (contains? cf/flags :export-file-v3)
        [:> dropdown-menu-item* {:class (stl/css :submenu-item)

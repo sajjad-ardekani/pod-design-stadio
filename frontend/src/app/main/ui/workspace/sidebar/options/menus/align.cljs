@@ -43,7 +43,7 @@
 
     (when (not  (and disabled-align disabled-distribute))
       [:div {:class (stl/css :align-options)}
-       [:div {:class (stl/css :align-group-horizontal)}
+       [:div {:class (stl/css :align-group)}
         [:button {:class (stl/css-case :align-button true
                                        :disabled disabled-align)
                   :disabled disabled-align
@@ -76,7 +76,7 @@
                   :on-click distribute-objects}
          i/distribute-horizontally]]
 
-       [:div {:class (stl/css :align-group-vertical)}
+       [:div {:class (stl/css :align-group)}
         [:button {:class (stl/css-case :align-button true
                                        :disabled disabled-align)
                   :disabled disabled-align

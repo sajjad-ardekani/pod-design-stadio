@@ -138,9 +138,10 @@
                  #js {:label (tr "workspace.toolbar.assets")
                       :id "assets"
                       :content assets-tab}
-                 #js {:label "Tokens"
-                      :id "tokens"
-                      :content tokens-tab}]
+;;                  #js {:label "Tokens"
+;;                       :id "tokens"
+;;                       :content tokens-tab}
+                      ]
             #js [#js {:label (tr "workspace.sidebar.layers")
                       :id "layers"
                       :content layers-tab}

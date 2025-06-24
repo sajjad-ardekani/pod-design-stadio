@@ -289,55 +289,55 @@
            (st/emit! (dwt/selected-fit-content))))]
 
     [:div {:class (stl/css :element-set)}
-     (when (and (options :presets)
-                (or (nil? all-types) (= (count all-types) 1)))
-       [:div {:class (stl/css :presets)}
-        [:div {:class (stl/css-case  :presets-wrapper true
-                                     :opened show-presets-dropdown?)
-               :on-click open-presets}
-         [:span {:class (stl/css :select-name)} (tr "workspace.options.size-presets")]
-         [:span {:class (stl/css :collapsed-icon)} i/arrow]
-
-         [:& dropdown {:show show-presets-dropdown?
-                       :on-close close-presets}
-          [:ul {:class (stl/css :custom-select-dropdown)}
-           (for [size-preset size-presets]
-             (if-not (:width size-preset)
-               [:li {:key (:name size-preset)
-                     :class (stl/css-case :dropdown-element true
-                                          :disabled true)}
-                [:span {:class (stl/css :preset-name)} (:name size-preset)]]
-
-               (let [preset-match (and (= (:width size-preset) (d/parse-integer (:width values) 0))
-                                       (= (:height size-preset) (d/parse-integer (:height values) 0)))]
-                 [:li {:key (:name size-preset)
-                       :class (stl/css-case :dropdown-element true
-                                            :match preset-match)
-                       :data-width (str (:width size-preset))
-                       :data-height (str (:height size-preset))
-                       :on-click on-preset-selected}
-                  [:div {:class (stl/css :name-wrapper)}
-                   [:span {:class (stl/css :preset-name)} (:name size-preset)]
-                   [:span {:class (stl/css :preset-size)} (:width size-preset) " x " (:height size-preset)]]
-                  (when preset-match
-                    [:span {:class (stl/css :check-icon)} i/tick])])))]]]
-
-        [:& radio-buttons {:selected (or (d/name orientation) "")
-                           :on-change on-orientation-change
-                           :name "frame-orientation"
-                           :wide true
-                           :class (stl/css :radio-buttons)}
-         [:& radio-button {:icon i/size-vertical
-                           :value "vert"
-                           :id "size-vertical"}]
-         [:& radio-button {:icon i/size-horizontal
-                           :value "horiz"
-                           :id "size-horizontal"}]]
-        [:> icon-button*
-         {:variant "ghost"
-          :aria-label (tr "workspace.options.fit-content")
-          :on-pointer-down handle-fit-content
-          :icon "fit-content"}]])
+;;      (when (and (options :presets)
+;;                 (or (nil? all-types) (= (count all-types) 1)))
+;;        [:div {:class (stl/css :presets)}
+;;         [:div {:class (stl/css-case  :presets-wrapper true
+;;                                      :opened show-presets-dropdown?)
+;;                :on-click open-presets}
+;;          [:span {:class (stl/css :select-name)} (tr "workspace.options.size-presets")]
+;;          [:span {:class (stl/css :collapsed-icon)} i/arrow]
+;;
+;;          [:& dropdown {:show show-presets-dropdown?
+;;                        :on-close close-presets}
+;;           [:ul {:class (stl/css :custom-select-dropdown)}
+;;            (for [size-preset size-presets]
+;;              (if-not (:width size-preset)
+;;                [:li {:key (:name size-preset)
+;;                      :class (stl/css-case :dropdown-element true
+;;                                           :disabled true)}
+;;                 [:span {:class (stl/css :preset-name)} (:name size-preset)]]
+;;
+;;                (let [preset-match (and (= (:width size-preset) (d/parse-integer (:width values) 0))
+;;                                        (= (:height size-preset) (d/parse-integer (:height values) 0)))]
+;;                  [:li {:key (:name size-preset)
+;;                        :class (stl/css-case :dropdown-element true
+;;                                             :match preset-match)
+;;                        :data-width (str (:width size-preset))
+;;                        :data-height (str (:height size-preset))
+;;                        :on-click on-preset-selected}
+;;                   [:div {:class (stl/css :name-wrapper)}
+;;                    [:span {:class (stl/css :preset-name)} (:name size-preset)]
+;;                    [:span {:class (stl/css :preset-size)} (:width size-preset) " x " (:height size-preset)]]
+;;                   (when preset-match
+;;                     [:span {:class (stl/css :check-icon)} i/tick])])))]]]
+;;
+;;         [:& radio-buttons {:selected (or (d/name orientation) "")
+;;                            :on-change on-orientation-change
+;;                            :name "frame-orientation"
+;;                            :wide true
+;;                            :class (stl/css :radio-buttons)}
+;;          [:& radio-button {:icon i/size-vertical
+;;                            :value "vert"
+;;                            :id "size-vertical"}]
+;;          [:& radio-button {:icon i/size-horizontal
+;;                            :value "horiz"
+;;                            :id "size-horizontal"}]]
+;;         [:> icon-button*
+;;          {:variant "ghost"
+;;           :aria-label (tr "workspace.options.fit-content")
+;;           :on-pointer-down handle-fit-content
+;;           :icon "fit-content"}]])
      (when (options :size)
        [:div {:class (stl/css :size)}
         [:div {:class (stl/css-case :width true
@@ -426,17 +426,19 @@
                                           :selected (not (:show-content values)))}
 
             [:> ds-i/icon* {:icon-id ds-i/clip-content}]]])
-        (when (options :show-in-viewer)
-          [:div {:class (stl/css :show-in-viewer)}
-           [:input {:type "checkbox"
-                    :id "show-in-viewer"
-                    :ref show-in-viewer-ref
-                    :class (stl/css :clip-content-input)
-                    :checked (not (:hide-in-viewer values))
-                    :on-change on-change-show-in-viewer}]
-
-           [:label {:for "show-in-viewer"
-                    :title (tr "workspace.options.show-in-viewer")
-                    :class (stl/css-case  :clip-content-label true
-                                          :selected (not (:hide-in-viewer values)))}
-            [:> ds-i/icon* {:icon-id ds-i/play}]]])])]))
+;;         (when (options :show-in-viewer)
+;;           [:div {:class (stl/css :show-in-viewer)}
+;;            [:input {:type "checkbox"
+;;                     :id "show-in-viewer"
+;;                     :ref show-in-viewer-ref
+;;                     :class (stl/css :clip-content-input)
+;;                     :checked (not (:hide-in-viewer values))
+;;                     :on-change on-change-show-in-viewer}]
+;;
+;;            [:label {:for "show-in-viewer"
+;;                     :title (tr "workspace.options.show-in-viewer")
+;;                     :class (stl/css-case  :clip-content-label true
+;;                                           :selected (not (:hide-in-viewer values)))}
+;;             [:> ds-i/icon* {:icon-id ds-i/play}]]
+;;             ])
+            ])]))

@@ -240,8 +240,9 @@
             :on-click open-share-dialog}
         i/share])
 
-     [:a {:class (stl/css :viewer-btn)
-          :title (tr "workspace.header.viewer" (sc/get-tooltip :open-viewer))
-          :on-click nav-to-viewer}
-      i/play]]))
+;;      [:a {:class (stl/css :viewer-btn)
+;;           :title (tr "workspace.header.viewer" (sc/get-tooltip :open-viewer))
+;;           :on-click nav-to-viewer}
+;;       i/play]
+      ]))
 

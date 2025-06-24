@@ -370,4 +370,4 @@
           {:tag-name "div"
            :class (stl/css :cta)
            :content (tr "workspace.versions.warning.subtext"
-                        "mailto:support@penpot.app")}]]])]))
+                        "mailto:support@podconverge.com")}]]])]))

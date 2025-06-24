@@ -145,15 +145,15 @@
            :on-click interrupt}
           i/move]]
         [:*
-         [:li
-          [:button
-           {:title test-tooltip-board-text
-            :aria-label (tr "workspace.toolbar.frame" (sc/get-tooltip :draw-frame))
-            :class  (stl/css-case :main-toolbar-options-button true :selected (= drawtool :frame))
-            :on-click select-drawtool
-            :data-tool "frame"
-            :data-testid "artboard-btn"}
-           i/board]]
+;;          [:li
+;;           [:button
+;;            {:title test-tooltip-board-text
+;;             :aria-label (tr "workspace.toolbar.frame" (sc/get-tooltip :draw-frame))
+;;             :class  (stl/css-case :main-toolbar-options-button true :selected (= drawtool :frame))
+;;             :on-click select-drawtool
+;;             :data-tool "frame"
+;;             :data-testid "artboard-btn"}
+;;            i/board]]
          [:li
           [:button
            {:title (tr "workspace.toolbar.rect" (sc/get-tooltip :draw-rect))
@@ -202,19 +202,19 @@
             :data-testid "path-btn"}
            i/path]]
 
-         (when (features/active-feature? @st/state "plugins/runtime")
-           [:li
-            [:button
-             {:title (tr "workspace.toolbar.plugins" (sc/get-tooltip :plugins))
-              :aria-label (tr "workspace.toolbar.plugins" (sc/get-tooltip :plugins))
-              :class (stl/css :main-toolbar-options-button)
-              :on-click #(st/emit!
-                          (ptk/data-event ::ev/event {::ev/name "open-plugins-manager"
-                                                      ::ev/origin "workspace:toolbar"})
-                          (modal/show :plugin-management {}))
-              :data-tool "plugins"
-              :data-testid "plugins-btn"}
-             i/puzzle]])
+;;          (when (features/active-feature? @st/state "plugins/runtime")
+;;            [:li
+;;             [:button
+;;              {:title (tr "workspace.toolbar.plugins" (sc/get-tooltip :plugins))
+;;               :aria-label (tr "workspace.toolbar.plugins" (sc/get-tooltip :plugins))
+;;               :class (stl/css :main-toolbar-options-button)
+;;               :on-click #(st/emit!
+;;                           (ptk/data-event ::ev/event {::ev/name "open-plugins-manager"
+;;                                                       ::ev/origin "workspace:toolbar"})
+;;                           (modal/show :plugin-management {}))
+;;               :data-tool "plugins"
+;;               :data-testid "plugins-btn"}
+;;              i/puzzle]])
 
          (when *assert*
            [:li
