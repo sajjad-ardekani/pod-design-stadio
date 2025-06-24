@@ -44,6 +44,17 @@
     (aset u32-arr 3 (aget buffer 3))
     (js/Uint8Array. (.-buffer u32-arr))))
 
+(defn serialize-uuid
+  [id]
+  (try
+    (if (nil? id)
+      (do
+        [uuid/zero])
+      (let [as-uuid (uuid/uuid id)]
+        (uuid/get-u32 as-uuid)))
+    (catch :default _e
+      [uuid/zero])))
+
 (defn heapu32-set-u32
   [value heap offset]
   (aset heap offset value))
@@ -266,9 +277,40 @@
     :inner-shadow 1
     0))
 
-
 (defn translate-structure-modifier-type
   [type]
   (case type
     :remove-children 1
-    :add-children    2))
+    :add-children    2
+    :scale-content 3))
+
+(defn translate-grow-type
+  [grow-type]
+  (case grow-type
+    :auto-width 1
+    :auto-height 2
+    0))
+
+(defn- serialize-enum
+  [value enum-map]
+  (get enum-map value 0))
+
+(defn serialize-vertical-align
+  [vertical-align]
+  (serialize-enum vertical-align {"top" 0 "center" 1 "bottom" 2}))
+
+(defn serialize-text-align
+  [text-align]
+  (serialize-enum text-align {"left" 0 "center" 1 "right" 2 "justify" 3}))
+
+(defn serialize-text-transform
+  [text-transform]
+  (serialize-enum text-transform {"none" 0 "uppercase" 1 "lowercase" 2 "capitalize" 3}))
+
+(defn serialize-text-decoration
+  [text-decoration]
+  (serialize-enum text-decoration {"none" 0 "underline" 1 "line-through" 2 "overline" 3}))
+
+(defn serialize-text-direction
+  [text-direction]
+  (serialize-enum text-direction {"ltr" 0 "rtl" 1}))

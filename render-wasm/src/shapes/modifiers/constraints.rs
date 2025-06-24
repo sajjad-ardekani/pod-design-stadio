@@ -11,26 +11,26 @@ pub fn calculate_resize(
 ) -> Option<(f32, f32)> {
     let scale_width = match constraint_h {
         ConstraintH::Left | ConstraintH::Right | ConstraintH::Center => {
-            parent_before.width() / parent_after.width()
+            parent_before.width() / f32::max(0.01, parent_after.width())
         }
         ConstraintH::LeftRight => {
             let left = parent_before.left(child_before.nw);
             let right = parent_before.right(child_before.ne);
             let target_width = parent_after.width() - left - right;
-            target_width / child_after.width()
+            target_width / f32::max(0.01, child_after.width())
         }
         _ => 1.0,
     };
 
     let scale_height = match constraint_v {
         ConstraintV::Top | ConstraintV::Bottom | ConstraintV::Center => {
-            parent_before.height() / parent_after.height()
+            parent_before.height() / f32::max(0.01, parent_after.height())
         }
         ConstraintV::TopBottom => {
             let top = parent_before.top(child_before.nw);
             let bottom = parent_before.bottom(child_before.sw);
             let target_height = parent_after.height() - top - bottom;
-            target_height / child_after.height()
+            target_height / f32::max(0.01, child_after.height())
         }
         _ => 1.0,
     };
@@ -104,10 +104,12 @@ pub fn propagate_shape_constraints(
     constraint_h: ConstraintH,
     constraint_v: ConstraintV,
     transform: Matrix,
+    ignore_constrainst: bool,
 ) -> Matrix {
     // if the constrains are scale & scale or the transform has only moves we
     // can propagate as is
-    if (constraint_h == ConstraintH::Scale && constraint_v == ConstraintV::Scale)
+    if (ignore_constrainst
+        || constraint_h == ConstraintH::Scale && constraint_v == ConstraintV::Scale)
         || transform.is_translate()
     {
         return transform;
@@ -120,16 +122,14 @@ pub fn propagate_shape_constraints(
     if let Some((scale_width, scale_height)) = calculate_resize(
         constraint_h,
         constraint_v,
-        &parent_bounds_before,
-        &parent_bounds_after,
-        &child_bounds_before,
+        parent_bounds_before,
+        parent_bounds_after,
+        child_bounds_before,
         &child_bounds_after,
     ) {
         let center = child_bounds_before.center();
 
-        let mut parent_transform = parent_bounds_after
-            .transform_matrix()
-            .unwrap_or(Matrix::default());
+        let mut parent_transform = parent_bounds_after.transform_matrix().unwrap_or_default();
         parent_transform.post_translate(center);
         parent_transform.pre_translate(-center);
 
@@ -140,7 +140,7 @@ pub fn propagate_shape_constraints(
         scale.post_translate(origin);
         scale.post_concat(&parent_transform);
         scale.pre_translate(-origin);
-        scale.pre_concat(&parent_transform_inv);
+        scale.pre_concat(parent_transform_inv);
 
         child_bounds_after.transform_mut(&scale);
         transform.post_concat(&scale);
@@ -150,9 +150,9 @@ pub fn propagate_shape_constraints(
     if let Some((delta_x, delta_y)) = calculate_displacement(
         constraint_h,
         constraint_v,
-        &parent_bounds_before,
-        &parent_bounds_after,
-        &child_bounds_before,
+        parent_bounds_before,
+        parent_bounds_after,
+        child_bounds_before,
         &child_bounds_after,
     ) {
         let th = parent_bounds_after.hv(delta_x);

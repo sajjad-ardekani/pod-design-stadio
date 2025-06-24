@@ -8,12 +8,14 @@
 (ns app.main.ui.workspace.sidebar.assets.common
   (:require-macros [app.main.style :as stl])
   (:require
+   [app.common.data.macros :as dm]
    [app.common.files.helpers :as cfh]
    [app.common.spec :as us]
    [app.common.thumbnails :as thc]
    [app.common.types.component :as ctk]
    [app.common.types.container :as ctn]
    [app.common.types.file :as ctf]
+   [app.common.types.variant :as ctv]
    [app.config :as cf]
    [app.main.data.helpers :as dsh]
    [app.main.data.modal :as modal]
@@ -381,6 +383,25 @@
 
         variants? (features/use-feature "variants/v1")
 
+        same-variant? (ctv/same-variant? shapes)
+
+        is-restorable-variant?
+        ;; A shape is a restorable variant if its component is deleted, is a variant,
+        ;; and the variant-container in which it will be restored still exists
+        (fn [shape]
+          (let [component (find-component shape true)
+                main      (ctk/get-component-root component)
+                objects   (dm/get-in libraries [(:component-file shape)
+                                                :data
+                                                :pages-index
+                                                (:main-instance-page component)
+                                                :objects])
+
+                parent    (get objects (:parent-id main))]
+            (and (:deleted component) (ctk/is-variant? component) parent)))
+
+        restorable-variants? (and variants?
+                                  (every? is-restorable-variant? restorable-copies))
 
         do-detach-component
         #(st/emit! (dwl/detach-components (map :id copies)))
@@ -446,7 +467,7 @@
            (when (= 1 (count comps-to-restore))
              (ts/schedule 1000 do-show-component)))
 
-        menu-entries [(when (and (not multi) main-instance?)
+        menu-entries [(when (and (or (not multi) same-variant?) main-instance?)
                         {:title (tr "workspace.shape.menu.show-in-assets")
                          :action do-show-in-assets})
                       (when (and (not multi) main-instance? local-component? lacks-annotation?)
@@ -462,7 +483,10 @@
                         {:title (tr "workspace.shape.menu.reset-overrides")
                          :action do-reset-component})
                       (when (seq restorable-copies)
-                        {:title (tr "workspace.shape.menu.restore-main")
+                        {:title
+                         (if restorable-variants?
+                           (tr "workspace.shape.menu.restore-variant")
+                           (tr "workspace.shape.menu.restore-main"))
                          :action do-restore-component})
                       (when can-show-component?
                         {:title (tr "workspace.shape.menu.show-main")
@@ -470,7 +494,7 @@
                       (when can-update-main?
                         {:title (tr "workspace.shape.menu.update-main")
                          :action do-update-component})
-                      (when (and variants? (not multi) main-instance?)
+                      (when (and variants? (or (not multi) same-variant?) main-instance?)
                         {:title (tr "workspace.shape.menu.add-variant")
                          :shortcut :create-component
                          :action do-add-variant})]]

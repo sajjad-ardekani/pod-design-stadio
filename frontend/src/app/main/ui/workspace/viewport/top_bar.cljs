@@ -7,23 +7,23 @@
 (ns app.main.ui.workspace.viewport.top-bar
   (:require-macros [app.main.style :as stl])
   (:require
-   [app.common.files.helpers :as cfh]
-   [app.common.types.shape.layout :as ctl]
    [app.main.data.workspace :as dw]
    [app.main.data.workspace.common :as dwc]
-   [app.main.refs :as refs]
    [app.main.store :as st]
-   [app.main.ui.context :as ctx]
-   [app.main.ui.workspace.top-toolbar :refer [top-toolbar]]
    [app.main.ui.workspace.viewport.grid-layout-editor :refer [grid-edition-actions]]
-   [app.main.ui.workspace.viewport.path-actions :refer [path-actions]]
+   [app.main.ui.workspace.viewport.path-actions :refer [path-actions*]]
    [app.util.i18n :as i18n :refer [tr]]
    [rumext.v2 :as mf]))
 
-(mf/defc view-only-actions
+;; FIXME: this namespace should be renamed and all translation files
+;; should also be renamed. But this should be done on development
+;; branch.
+
+(mf/defc view-only-bar*
+  {::mf/private true}
   []
   (let [handle-close-view-mode
-        (mf/use-callback
+        (mf/use-fn
          (fn []
            (st/emit! :interrupt
                      (dw/set-options-mode :design)
@@ -38,43 +38,15 @@
                 :on-click handle-close-view-mode}
        (tr "workspace.top-bar.read-only.done")]]]))
 
-(mf/defc top-bar
-  {::mf/wrap [mf/memo]}
-  [{:keys [layout]}]
-  (let [edition     (mf/deref refs/selected-edition)
-        selected    (mf/deref refs/selected-objects)
-        drawing     (mf/deref refs/workspace-drawing)
-        rulers?     (mf/deref refs/rulers?)
-        drawing-obj (:object drawing)
-        shape       (or drawing-obj (-> selected first))
+(mf/defc path-edition-bar*
+  [{:keys [layout edit-path-state shape]}]
+  (let [rulers? (contains? layout :rulers)
+        class   (stl/css-case
+                 :viewport-actions-path true
+                 :viewport-actions-no-rulers (not rulers?))]
+    [:div {:class class}
+     [:> path-actions* {:shape shape :state edit-path-state}]]))
 
-        single? (= (count selected) 1)
-        editing? (= (:id shape) edition)
-        draw-path? (and (some? drawing-obj)
-                        (cfh/path-shape? drawing-obj)
-                        (not= :curve (:tool drawing)))
-
-        workspace-read-only? (mf/use-ctx ctx/workspace-read-only?)
-        hide-ui?       (:hide-ui layout)
-
-        path-edition? (or (and single? editing?
-                               (and (not (cfh/text-shape? shape))
-                                    (not (cfh/frame-shape? shape))))
-                          draw-path?)
-
-        grid-edition? (and single? editing? (ctl/grid-layout? shape))]
-
-    [:*
-     (when-not hide-ui?
-       [:& top-toolbar {:layout layout}])
-
-     (cond
-       workspace-read-only?
-       [:& view-only-actions]
-
-       path-edition?
-       [:div {:class (stl/css-case :viewport-actions-path true :viewport-actions-no-rulers (not rulers?))}
-        [:& path-actions {:shape shape}]]
-
-       grid-edition?
-       [:& grid-edition-actions {:shape shape}])]))
+(mf/defc grid-edition-bar*
+  [{:keys [shape]}]
+  [:& grid-edition-actions {:shape shape}])

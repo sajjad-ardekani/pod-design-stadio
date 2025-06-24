@@ -8,6 +8,7 @@
   (:require
    [app.common.data :as d]
    [app.common.files.helpers :as cfh]
+   [app.common.math :as math]
    [app.common.schema :as sm]
    [cuerdas.core :as str]))
 
@@ -22,15 +23,18 @@
 
 (def schema:variant-component
   ;; A component that is part of a variant set.
-  [:map
-   [:variant-id {:optional true} ::sm/uuid]
-   [:variant-properties {:optional true} [:vector schema:variant-property]]])
+  (sm/register!
+   ^{::sm/type ::variant-component}
+   [:map
+    [:variant-id {:optional true} ::sm/uuid]
+    [:variant-properties {:optional true} [:vector schema:variant-property]]]))
 
 (def schema:variant-shape
   ;; The root shape of the main instance of a variant component.
   [:map
    [:variant-id {:optional true} ::sm/uuid]
-   [:variant-name {:optional true} :string]])
+   [:variant-name {:optional true} :string]
+   [:variant-error {:optional true} :string]])
 
 (def schema:variant-container
   ;; is a board that contains all variant components of a variant set,
@@ -39,7 +43,6 @@
    [:is-variant-container {:optional true} :boolean]])
 
 (sm/register! ::variant-property schema:variant-property)
-(sm/register! ::variant-component schema:variant-component)
 (sm/register! ::variant-shape schema:variant-shape)
 (sm/register! ::variant-container schema:variant-container)
 
@@ -51,6 +54,7 @@
 
 (def property-prefix "Property")
 (def property-regex (re-pattern (str property-prefix "(\\d+)")))
+(def property-max-length 60)
 (def value-prefix "Value ")
 
 
@@ -104,8 +108,8 @@
      (add-new-props assigned remaining))))
 
 
-(defn properties-map-to-string
-  "Transforms a map of properties to a string of properties omitting the empty ones"
+(defn properties-map->formula
+  "Transforms a map of properties to a formula of properties omitting the empty ones"
   [properties]
   (->> properties
        (keep (fn [{:keys [name value]}]
@@ -114,22 +118,26 @@
        (str/join ", ")))
 
 
-(defn properties-string-to-map
-  "Transforms a string of properties to a map of properties"
+(defn properties-formula->map
+  "Transforms a formula of properties to a map of properties"
   [s]
   (->> (str/split s ",")
-       (mapv #(str/split % "="))
+       (mapv #(str/split % "=" 2))
+       (filter (fn [[_ v]] (not (str/blank? v))))
        (mapv (fn [[k v]]
                {:name (str/trim k)
                 :value (str/trim v)}))))
 
 
-(defn valid-properties-string?
-  "Checks if a string of properties has a processable format or not"
+(defn valid-properties-formula?
+  "Checks if a formula is valid"
   [s]
-  (let [pattern #"^([a-zA-Z0-9\s]+=[a-zA-Z0-9\s]+)(,\s*[a-zA-Z0-9\s]+=[a-zA-Z0-9\s]+)*$"]
-    (not (nil? (re-matches pattern s)))))
-
+  (->> (str/split s ",")
+       (mapv #(str/split % "=" 2))
+       (every? #(and (= 2 (count %))
+                     (not (str/blank? (first %)))
+                     (< (count (first %)) property-max-length)
+                     (< (count (second %)) property-max-length)))))
 
 (defn find-properties-to-remove
   "Compares two property maps to find which properties should be removed"
@@ -150,6 +158,46 @@
   [prev-props upd-props]
   (let [prev-names (set (map :name prev-props))]
     (filterv #(not (contains? prev-names (:name %))) upd-props)))
+
+
+(defn- split-base-name-and-number
+  "Extract the number in parentheses from an item, if present, and return both the base name and the number"
+  [item]
+  (let [pattern-num-parens #"\(\d+\)$"
+        pattern-num        #"\d+"
+        base (-> item (str/replace pattern-num-parens "") (str/trim))
+        num  (some->> item (re-find pattern-num-parens) (re-find pattern-num) (d/parse-integer))]
+    [base (d/nilv num 0)]))
+
+(defn- group-numbers-by-base-name
+  "Return a map with a set of numbers associated to each base name"
+  [items]
+  (reduce (fn [acc item]
+            (let [[base num] (split-base-name-and-number item)]
+              (update acc base (fnil conj #{}) num)))
+          {}
+          items))
+
+(defn update-number-in-repeated-item
+  "Add, keep or update a number in parentheses for a given item, if necessary, depending on the items
+   already present in a list, to avoid repetitions"
+  [items item]
+  (let [names      (group-numbers-by-base-name items)
+        [base num] (split-base-name-and-number item)
+        nums-taken (get names base #{})]
+    (loop [n num]
+      (if (nums-taken n)
+        (recur (inc n))
+        (str base (when (pos? n) (str " (" n ")")))))))
+
+(defn update-number-in-repeated-prop-names
+  "Add, keep or update a number for each prop name depending on the previous ones"
+  [props]
+  (->> props
+       (reduce (fn [acc prop]
+                 (conj acc {:name (update-number-in-repeated-item (mapv :name acc) (:name prop))
+                            :value (:value prop)}))
+               [])))
 
 
 (defn find-index-for-property-name
@@ -231,3 +279,50 @@
          {:props (vec props1) :used-pos (matching-indices props1 props2)}
          props2)
         :props)))
+
+(defn compare-properties
+  "Compares vectors of properties keeping the value if it is the same for all
+   or setting a custom value where their values do not coincide"
+  ([props-list]
+   (compare-properties props-list nil))
+
+  ([props-list distinct-mark]
+   (let [grouped (group-by :name (apply concat props-list))
+         check-values (fn [values]
+                        (let [vals (map :value values)]
+                          (if (apply = vals)
+                            (first vals)
+                            distinct-mark)))]
+     (mapv (fn [[name values]]
+             {:name name :value (check-values values)})
+           grouped))))
+
+(defn same-variant?
+  "Determines if all elements belong to the same variant"
+  [components]
+  (let [variant-ids (distinct (map :variant-id components))
+        not-blank?  (complement str/blank?)]
+    (and
+     (= 1 (count variant-ids))
+     (not-blank? (first variant-ids)))))
+
+(defn distance
+  "Computes a weighted distance between two property lists `props1` and `props2`.
+   Latter properties weight less that previous ones"
+  [props1 props2]
+  (let [total-num-props (count props1)
+        xform           (map-indexed
+                         (fn [idx [p1 p2]]
+                           (if (not= p1 p2)
+                             (math/pow 2 (- total-num-props idx))
+                             0)))]
+    (transduce
+     xform
+     +
+     (map vector props1 props2))))
+
+(defn variant-name-to-name
+  "Transforms a variant-name (its properties values) into a standard name:
+   the real name of the shape joined by the properties values separated by '/'"
+  [variant]
+  (cfh/merge-path-item (:name variant) (str/replace (:variant-name variant) #", " " / ")))

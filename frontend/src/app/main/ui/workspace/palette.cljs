@@ -40,12 +40,12 @@
         left-sidebar-size      (-> (dom/get-data left-sidebar "size")
                                    (d/parse-integer))
         rulers-width           (if rulers? 22 0)
-        min-left-sidebar-width 275
+        min-left-sidebar-width 318
         left-padding           4
         calculate-padding-left (+ rulers-width (or left-sidebar-size min-left-sidebar-width) left-padding 1)]
 
     #js {"paddingLeft" (dm/str calculate-padding-left "px")
-         "paddingRight" "280px"}))
+         "paddingRight" "322px"}))
 
 (mf/defc palette
   [{:keys [layout on-change-palette-size]}]
@@ -147,6 +147,7 @@
         (swap! state* assoc :width width)))
 
     [:div {:class (stl/css :palette-wrapper)
+           :id "palette-wrapper"
            :style  (calculate-palette-padding rulers?)
            :data-testid "palette"}
      (when-not workspace-read-only?

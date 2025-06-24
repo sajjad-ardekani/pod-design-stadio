@@ -9,35 +9,60 @@
    [app.common.types.variant :as ctv]
    [clojure.test :as t]))
 
-(t/deftest convert-between-variant-properties-maps-and-strings
+(t/deftest convert-between-variant-properties-maps-and-formulas
   (let [map-with-two-props           [{:name "border" :value "yes"} {:name "color" :value "gray"}]
         map-with-two-props-one-blank [{:name "border" :value "no"} {:name "color" :value ""}]
+        map-with-two-props-dashes    [{:name "border" :value "no"} {:name "color" :value "--"}]
         map-with-one-prop            [{:name "border" :value "no"}]
-        map-with-spaces              [{:name "border 1" :value "of course"} {:name "color 2" :value "dark gray"}]
+        map-with-equal               [{:name "border" :value "yes color=yes"}]
+        map-with-spaces              [{:name "border (1)" :value "of course"}
+                                      {:name "color (2)" :value "dark gray"}
+                                      {:name "background (3)" :value "anoth€r co-lor"}]
 
         string-valid-with-two-props  "border=yes, color=gray"
         string-valid-with-one-prop   "border=no"
-        string-valid-with-spaces     "border 1=of course, color 2=dark gray"
-        string-invalid               "border=yes, color="]
+        string-valid-with-spaces     "border (1)=of course, color (2)=dark gray, background (3)=anoth€r co-lor"
+        string-valid-with-no-value   "border=no, color="
+        string-valid-with-dashes     "border=no, color=--"
+        string-valid-with-equal      "border=yes color=yes"
 
-    (t/testing "convert map to string"
-      (t/is (= (ctv/properties-map-to-string map-with-two-props) string-valid-with-two-props))
-      (t/is (= (ctv/properties-map-to-string map-with-two-props-one-blank) string-valid-with-one-prop))
-      (t/is (= (ctv/properties-map-to-string map-with-spaces) string-valid-with-spaces)))
+        string-invalid-empty         ""
+        string-invalid-no-property-1 "=yes"
+        string-invalid-no-property-2 "border=yes, =gray"
+        string-invalid-no-equal-1    "border"
+        string-invalid-no-equal-2    "border=yes, color"
+        string-invalid-too-long-1    "this is a too long property name which should throw a validation error=yes"
+        string-invalid-too-long-2    "border=this is a too long property name which should throw a validation error"]
 
-    (t/testing "convert string to map"
-      (t/is (= (ctv/properties-string-to-map string-valid-with-two-props) map-with-two-props))
-      (t/is (= (ctv/properties-string-to-map string-valid-with-one-prop) map-with-one-prop))
-      (t/is (= (ctv/properties-string-to-map string-valid-with-spaces) map-with-spaces)))
+    (t/testing "convert map to formula"
+      (t/is (= (ctv/properties-map->formula map-with-two-props) string-valid-with-two-props))
+      (t/is (= (ctv/properties-map->formula map-with-two-props-one-blank) string-valid-with-one-prop))
+      (t/is (= (ctv/properties-map->formula map-with-spaces) string-valid-with-spaces)))
 
-    (t/testing "check if a string is valid"
-      (t/is (= (ctv/valid-properties-string? string-valid-with-two-props) true))
-      (t/is (= (ctv/valid-properties-string? string-valid-with-one-prop) true))
-      (t/is (= (ctv/valid-properties-string? string-valid-with-spaces) true))
-      (t/is (= (ctv/valid-properties-string? string-invalid) false)))))
+    (t/testing "convert formula to map"
+      (t/is (= (ctv/properties-formula->map string-valid-with-two-props) map-with-two-props))
+      (t/is (= (ctv/properties-formula->map string-valid-with-one-prop) map-with-one-prop))
+      (t/is (= (ctv/properties-formula->map string-valid-with-no-value) map-with-one-prop))
+      (t/is (= (ctv/properties-formula->map string-valid-with-dashes) map-with-two-props-dashes))
+      (t/is (= (ctv/properties-formula->map string-valid-with-equal) map-with-equal))
+      (t/is (= (ctv/properties-formula->map string-valid-with-spaces) map-with-spaces)))
+
+    (t/testing "check if a formula is valid"
+      (t/is (= (ctv/valid-properties-formula? string-valid-with-two-props) true))
+      (t/is (= (ctv/valid-properties-formula? string-valid-with-one-prop) true))
+      (t/is (= (ctv/valid-properties-formula? string-valid-with-spaces) true))
+      (t/is (= (ctv/valid-properties-formula? string-valid-with-no-value) true))
+      (t/is (= (ctv/valid-properties-formula? string-valid-with-dashes) true))
+      (t/is (= (ctv/valid-properties-formula? string-invalid-empty) false))
+      (t/is (= (ctv/valid-properties-formula? string-invalid-no-property-1) false))
+      (t/is (= (ctv/valid-properties-formula? string-invalid-no-equal-1) false))
+      (t/is (= (ctv/valid-properties-formula? string-invalid-no-property-2) false))
+      (t/is (= (ctv/valid-properties-formula? string-invalid-no-equal-2) false))
+      (t/is (= (ctv/valid-properties-formula? string-invalid-too-long-1) false))
+      (t/is (= (ctv/valid-properties-formula? string-invalid-too-long-2) false)))))
 
 
-(t/deftest compare-property-maps
+(t/deftest find-properties
   (let [prev-props  [{:name "border" :value "yes"} {:name "color" :value "gray"}]
         upd-props-1 [{:name "border" :value "yes"}]
         upd-props-2 [{:name "border" :value "yes"} {:name "color" :value "blue"}]
@@ -79,3 +104,58 @@
     (t/testing "find property index"
       (t/is (= (ctv/find-index-for-property-name prev-props "border") 0))
       (t/is (= (ctv/find-index-for-property-name prev-props "color") 1)))))
+
+
+(t/deftest compare-properties
+  (let [props-1  [{:name "border" :value "yes"} {:name "color" :value "gray"}]
+        props-2  [{:name "border" :value "yes"} {:name "color" :value "red"}]
+        props-3  [{:name "border" :value "no"} {:name "color" :value "gray"}]]
+
+    (t/testing "compare properties"
+      (t/is (= (ctv/compare-properties [props-1 props-2])
+               [{:name "border" :value "yes"} {:name "color" :value nil}]))
+      (t/is (= (ctv/compare-properties [props-1 props-2 props-3])
+               [{:name "border" :value nil} {:name "color" :value nil}]))
+      (t/is (= (ctv/compare-properties [props-1 props-2 props-3] "&")
+               [{:name "border" :value "&"} {:name "color" :value "&"}])))))
+
+
+(t/deftest check-belong-same-variant
+  (let [components-1 [{:variant-id "a variant"} {:variant-id "a variant"}]
+        components-2 [{:variant-id "a variant"} {:variant-id "another variant"}]
+        components-3 [{:variant-id "a variant"} {}]
+        components-4 [{} {}]]
+
+    (t/testing "check-belong-same-variant"
+      (t/is (= (ctv/same-variant? components-1) true))
+      (t/is (= (ctv/same-variant? components-2) false))
+      (t/is (= (ctv/same-variant? components-3) false))
+      (t/is (= (ctv/same-variant? components-4) false)))))
+
+
+(t/deftest update-number-in-repeated-item
+  (let [names ["border" "color" "color 1" "color 2" "color (1)" "color (7)" "area 51"]]
+
+    (t/testing "update-number-in-repeated-item"
+      (t/is (= (ctv/update-number-in-repeated-item names "background") "background"))
+      (t/is (= (ctv/update-number-in-repeated-item names "border")     "border (1)"))
+      (t/is (= (ctv/update-number-in-repeated-item names "color")      "color (2)"))
+      (t/is (= (ctv/update-number-in-repeated-item names "color 1")    "color 1 (1)"))
+      (t/is (= (ctv/update-number-in-repeated-item names "color (1)")  "color (2)"))
+      (t/is (= (ctv/update-number-in-repeated-item names "area 51")    "area 51 (1)")))))
+
+
+(t/deftest update-number-in-repeated-prop-names
+  (let [props          [{:name "color"      :value "yellow"}
+                        {:name "color"      :value "blue"}
+                        {:name "color"      :value "red"}
+                        {:name "border (1)" :value "no"}
+                        {:name "border (1)" :value "yes"}]
+        numbered-props [{:name "color"      :value "yellow"}
+                        {:name "color (1)"  :value "blue"}
+                        {:name "color (2)"  :value "red"}
+                        {:name "border (1)" :value "no"}
+                        {:name "border (2)" :value "yes"}]]
+
+    (t/testing "update-number-in-repeated-prop-names"
+      (t/is (= (ctv/update-number-in-repeated-prop-names props) numbered-props)))))

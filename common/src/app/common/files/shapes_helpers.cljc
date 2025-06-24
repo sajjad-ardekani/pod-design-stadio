@@ -15,6 +15,8 @@
    [app.common.types.shape.layout :as ctl]
    [app.common.uuid :as uuid]))
 
+;; FIXME: move to logic?
+
 (defn prepare-add-shape
   [changes shape objects]
   (let [index   (:index (meta shape))
@@ -35,6 +37,7 @@
                       (pcb/update-shapes [(:parent-id shape)] #(ctl/push-into-cell % [id] row column)))
                     (cond-> (ctl/grid-layout? objects (:parent-id shape))
                       (pcb/update-shapes [(:parent-id shape)] ctl/assign-cells {:with-objects? true})))]
+
     [shape changes]))
 
 (defn prepare-move-shapes-into-frame
@@ -44,6 +47,7 @@
         to-move    (->> shapes
                         (map (d/getf objects))
                         (not-empty))]
+
     (if to-move
       (-> changes
           (cond-> (and remove-layout-data?
@@ -87,10 +91,10 @@
            parent-id    (or parent-id (get selected-obj :parent-id))
            base-parent  (get objects parent-id)
 
-           layout-props
+           layout-attrs
            (when (and (= 1 (count selected))
                       (ctl/any-layout? base-parent))
-             (select-keys selected-obj ctl/layout-item-props))
+             (select-keys selected-obj ctl/layout-child-attrs))
 
            target-cell-id
            (if (and (nil? target-cell-id)
@@ -125,8 +129,8 @@
                      :parent-id parent-id
                      :shapes (into [] selected))
 
-              (some? layout-props)
-              (d/patch-object layout-props)
+              (some? layout-attrs)
+              (d/patch-object layout-attrs)
 
               ;; Frames from shapes will not be displayed in viewer and no clipped
               (or (not= frame-id uuid/zero) without-fill?)

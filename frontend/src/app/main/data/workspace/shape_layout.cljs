@@ -29,6 +29,7 @@
    [app.main.data.workspace.selection :as dwse]
    [app.main.data.workspace.shapes :as dwsh]
    [app.main.data.workspace.undo :as dwu]
+   [app.main.features :as features]
    [beicon.v2.core :as rx]
    [potok.v2.core :as ptk]))
 
@@ -97,17 +98,22 @@
 ;; Never call this directly but through the data-event `:layout/update`
 ;; Otherwise a lot of cycle dependencies could be generated
 (defn- update-layout-positions
-  [{:keys [ids undo-group]}]
+  [{:keys [page-id ids undo-group]}]
   (ptk/reify ::update-layout-positions
     ptk/WatchEvent
     (watch [_ state _]
-      (let [objects (dsh/lookup-page-objects state)
+      (let [page-id (or page-id (:current-page-id state))
+            objects (dsh/lookup-page-objects state page-id)
             ids (->> ids (filter #(contains? objects %)))]
         (if (d/not-empty? ids)
           (let [modif-tree (dwm/create-modif-tree ids (ctm/reflow-modifiers))]
-            (rx/of (dwm/apply-modifiers {:modifiers modif-tree
-                                         :stack-undo? true
-                                         :undo-group undo-group})))
+            (if (features/active-feature? state "render-wasm/v1")
+              (rx/of (dwm/apply-wasm-modifiers modif-tree :stack-undo? true :undo-group undo-group))
+
+              (rx/of (dwm/apply-modifiers {:page-id page-id
+                                           :modifiers modif-tree
+                                           :stack-undo? true
+                                           :undo-group undo-group}))))
           (rx/empty))))))
 
 (defn initialize-shape-layout
@@ -127,8 +133,9 @@
              (rx/filter #(d/not-empty? %))
              (rx/map
               (fn [data]
-                (let [ids (reduce #(into %1 (:ids %2)) #{} data)]
-                  (update-layout-positions {:ids ids}))))
+                (let [page-id (->> data (keep :page-id) first)
+                      ids (reduce #(into %1 (:ids %2)) #{} data)]
+                  (update-layout-positions {:page-id page-id :ids ids}))))
              (rx/take-until stopper))))))
 
 (defn finalize-shape-layout
@@ -287,7 +294,13 @@
                                       (seq padding-attrs)
                                       (assoc :changed-sub-attr padding-attrs)))
                 (ptk/data-event :layout/update {:ids ids})
-                (dwu/commit-undo-transaction undo-id)))))))
+                (dwu/commit-undo-transaction undo-id)
+                (when (or (:layout-align-content changes) (:layout-justify-content changes))
+                  (ptk/event ::ev/event
+                             {::ev/name "layout-change-alignment"}))
+                (when (or (:layout-padding changes) (:layout-gap changes))
+                  (ptk/event ::ev/event
+                             {::ev/name "layout-change-margin"}))))))))
 
 (defn add-layout-track
   ([ids type value]

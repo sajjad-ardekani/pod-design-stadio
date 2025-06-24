@@ -18,8 +18,10 @@
    [app.common.types.plugins :as ctpg]
    [app.common.types.shape-tree :as ctst]
    [app.common.types.shape.layout :as ctl]
+   [app.common.types.text :as cttx]
    [app.common.types.token :as ctt]
-   [app.common.uuid :as uuid]))
+   [app.common.uuid :as uuid]
+   [clojure.set :as set]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SCHEMA
@@ -41,7 +43,7 @@
    [:map-of {:gen/max 10} ::sm/uuid :map]]
   [:plugin-data {:optional true} ::ctpg/plugin-data]])
 
-(def check-container!
+(def check-container
   (sm/check-fn ::container))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -62,9 +64,9 @@
 
 (defn get-container
   [file type id]
-  (dm/assert! (map? file))
-  (dm/assert! (contains? valid-container-types type))
-  (dm/assert! (uuid? id))
+  (assert (map? file))
+  (assert (contains? valid-container-types type))
+  (assert (uuid? id))
 
   (-> (if (= type :page)
         (ctpl/get-page file id)
@@ -74,13 +76,9 @@
 (defn get-shape
   [container shape-id]
 
-  (dm/assert!
-   "expected valid container"
-   (check-container! container))
-
-  (dm/assert!
-   "expected valid uuid for `shape-id`"
-   (uuid? shape-id))
+  (assert (check-container container))
+  (assert (uuid? shape-id)
+          "expected valid uuid for `shape-id`")
 
   (-> container
       (get :objects)
@@ -479,7 +477,7 @@
            ;; We can always move the children to the parent they already have.
            ;; But if we are pasting, those are new items, so it is considered a change
            no-changes?
-           (and (->> children (every? #(= parent-id (:parent-id %))))
+           (and (every? #(= parent-id (:parent-id %)) children)
                 (not pasting?))
 
            ;; When pasting frames, children have the frames and their children
@@ -489,7 +487,13 @@
 
            ;; Are all the top-children a main-instance of a component?
            all-main?
-           (->> top-children (every? #(ctk/main-instance? %)))
+           (every? ctk/main-instance? top-children)
+
+           any-main-descendant
+           (some
+            (fn [shape]
+              (some ctk/main-instance? (cfh/get-children-with-self objects (:id shape))))
+            children)
 
            ;; Are all the top-children a main-instance of a cutted component?
            all-comp-cut?
@@ -501,6 +505,8 @@
                   (every? :deleted)))]
        (if (or no-changes?
                (and (not (invalid-structure-for-component? objects parent children pasting? libraries))
+                    ;; If we are moving into a main component, no descendant can be main
+                    (or (nil? any-main-descendant) (not (ctk/main-instance? parent)))
                     ;; If we are moving into a variant-container, all the items should be main
                     ;; so if we are pasting, only allow main instances that are cut-and-pasted
                     (or (not (ctk/is-variant-container? parent))
@@ -530,8 +536,6 @@
   indicating if shape is touched or not."
   [shape attr val & {:keys [ignore-touched ignore-geometry]}]
   (let [group        (get ctk/sync-attrs attr)
-        token-groups (when (= attr :applied-tokens)
-                       (get-token-groups shape val))
         shape-val    (get shape attr)
 
         ignore?
@@ -562,22 +566,33 @@
           (gsh/close-attrs? attr val shape-val))
 
         touched?
-        (and group (not equal?) (not (and ignore-geometry is-geometry?)))]
+        (and group
+             (not equal?)
+             (not (and ignore-geometry is-geometry?)))
 
+        content-diff-type (when (and (= (:type shape) :text) (= attr :content))
+                            (cttx/get-diff-type (:content shape) val))
+
+        token-groups (if (= attr :applied-tokens)
+                       (get-token-groups shape val)
+                       #{})
+
+        groups (cond-> token-groups
+                 (and group (not equal?))
+                 (set/union #{group} content-diff-type))]
     (cond-> shape
       ;; Depending on the origin of the attribute change, we need or not to
       ;; set the "touched" flag for the group the attribute belongs to.
       ;; In some cases we need to ignore touched only if the attribute is
       ;; geometric (position, width or transformation).
       (and in-copy?
-           (or (and group (not equal?)) (seq token-groups))
-           (not ignore?) (not (and ignore-geometry is-geometry?)))
+           (not-empty groups)
+           (not ignore?)
+           (not (and ignore-geometry is-geometry?)))
       (-> (update :touched (fn [touched]
                              (reduce #(ctk/set-touched-group %1 %2)
                                      touched
-                                     (if group
-                                       (cons group token-groups)
-                                       token-groups))))
+                                     groups)))
           (dissoc :remote-synced))
 
       (nil? val)

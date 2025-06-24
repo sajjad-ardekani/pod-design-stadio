@@ -8,22 +8,17 @@
    [app.common.data.macros :as dm]
    [app.common.types.component :as ctc]
    [app.common.types.components-list :as ctcl]
-   [app.common.types.variant :as ctv]
-   [cuerdas.core :as str]))
+   [app.common.types.variant :as ctv]))
 
 
 (defn find-variant-components
   "Find a list of the components thet belongs to this variant-id"
   [data objects variant-id]
+  ;; We can't simply filter components, because we need to maintain the order
   (->> (dm/get-in objects [variant-id :shapes])
        (map #(dm/get-in objects [% :component-id]))
        (map #(ctcl/get-component data % true))
        reverse))
-
-(defn- dashes-to-end
-  [property-values]
-  (let [dashes (if (some #(= % "--") property-values) ["--"] [])]
-    (concat (remove #(= % "--") property-values) dashes)))
 
 
 (defn extract-properties-names
@@ -41,10 +36,7 @@
        (group-by :name)
        (map (fn [[k v]]
               {:name k
-               :value (->> v
-                           (map #(if (str/empty? (:value %)) "--" (:value %)))
-                           distinct
-                           dashes-to-end)}))))
+               :value (->> v (map :value) distinct)}))))
 
 (defn get-variant-mains
   [component data]

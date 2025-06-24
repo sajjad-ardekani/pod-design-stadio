@@ -61,6 +61,7 @@
         is-variant-container? (when variants? (ctk/is-variant-container? item))
         variant-id            (when is-variant? (:variant-id item))
         variant-name          (when is-variant? (:variant-name item))
+        variant-error         (when is-variant? (:variant-error item))
 
         data                  (deref refs/workspace-data)
         component             (ctkl/get-component data (:component-id item))
@@ -144,6 +145,7 @@
                         :variant-id variant-id
                         :variant-name variant-name
                         :variant-properties variant-properties
+                        :variant-error variant-error
                         :component-id (:id component)
                         :is-hidden hidden?}]
 
@@ -355,18 +357,14 @@
             first-child-node (dom/get-first-child parent-node)
 
             subid
-            (when (and single? selected?)
-              (let [scroll-to @scroll-to-middle?]
-                (ts/schedule
-                 100
-                 #(when (and node scroll-node)
-                    (let [scroll-distance-ratio (dom/get-scroll-distance-ratio node scroll-node)
-                          scroll-behavior (if (> scroll-distance-ratio 1) "instant" "smooth")]
-                      (if scroll-to
-                        (dom/scroll-into-view! first-child-node #js {:block "center" :behavior scroll-behavior  :inline "start"})
-                        (do
-                          (dom/scroll-into-view-if-needed! first-child-node #js {:block "center" :behavior scroll-behavior :inline "start"})
-                          (reset! scroll-to-middle? true))))))))]
+            (when (and single? selected? @scroll-to-middle?)
+              (ts/schedule
+               100
+               #(when (and node scroll-node)
+                  (let [scroll-distance-ratio (dom/get-scroll-distance-ratio node scroll-node)
+                        scroll-behavior (if (> scroll-distance-ratio 1) "instant" "smooth")]
+                    (dom/scroll-into-view-if-needed! first-child-node #js {:block "center" :behavior scroll-behavior :inline "start"})
+                    (reset! scroll-to-middle? true)))))]
 
         #(when (some? subid)
            (rx/dispose! subid))))

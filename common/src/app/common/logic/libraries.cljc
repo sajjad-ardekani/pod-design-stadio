@@ -25,11 +25,14 @@
    [app.common.types.file :as ctf]
    [app.common.types.page :as ctp]
    [app.common.types.pages-list :as ctpl]
+   [app.common.types.shape :as cts]
    [app.common.types.shape-tree :as ctst]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.types.shape.layout :as ctl]
+   [app.common.types.text :as cttx]
    [app.common.types.token :as cto]
    [app.common.types.typography :as cty]
+   [app.common.types.variant :as ctv]
    [app.common.uuid :as uuid]
    [clojure.set :as set]
    [clojure.spec.alpha :as s]))
@@ -37,8 +40,16 @@
 ;; Change this to :info :debug or :trace to debug this module, or :warn to reset to default
 (log/set-level! :warn)
 
+;; Add uuids here to filter logs to only show specific shapes or containers (and all shapes
+;; contained in them).
 (def log-shape-ids #{})
 (def log-container-ids #{})
+
+(def updatable-attrs (->> (seq (keys ctk/sync-attrs))
+                           ;; We don't update the flex-child attrs
+                          (remove ctk/swap-keep-attrs)
+                           ;; We don't do automatic update of the `layout-grid-cells` property.
+                          (remove #(= :layout-grid-cells %))))
 
 (defn enabled-shape?
   [id container]
@@ -144,7 +155,6 @@
                           :update-new-shape update-new-shape
                           :update-original-shape update-original-shape
                           :force-id force-id)
-
         remap-frame
         (fn [shape]
               ; Remap all frame-ids internal to the component to the new shapes
@@ -174,18 +184,20 @@
 
 (defn generate-duplicate-component
   "Create a new component copied from the one with the given id."
-  [changes library component-id new-component-id & {:keys [new-shape-id apply-changes-local-library? delta new-variant-id]}]
+  [changes library component-id new-component-id & {:keys [new-shape-id apply-changes-local-library? delta new-variant-id page-id]}]
   (let [component          (ctkl/get-component (:data library) component-id)
         new-name           (:name component)
 
         main-instance-page (ctf/get-component-page (:data library) component)
+        ;; Since variants, we can duplicate a component into another page
+        target-page-id     (or page-id (:id main-instance-page))
 
         [new-main-instance-shape new-main-instance-shapes]
         (duplicate-component component new-component-id (:data library) new-shape-id delta new-variant-id)]
 
     [new-main-instance-shape
      (-> changes
-         (pcb/with-page main-instance-page)
+         (pcb/with-page-id target-page-id)
          (pcb/with-objects (:objects main-instance-page))
          (pcb/add-objects new-main-instance-shapes {:ignore-touched true})
          (pcb/add-component new-component-id
@@ -193,7 +205,7 @@
                             new-name
                             []
                             (:id new-main-instance-shape)
-                            (:id main-instance-page)
+                            target-page-id
                             (:annotation component)
                             (or new-variant-id (:variant-id component))
                             (:variant-properties component)
@@ -212,10 +224,12 @@
   "Generate changes to create a new instance from a component."
   ([changes objects file-id component-id position page libraries]
    (generate-instantiate-component changes objects file-id component-id position page libraries nil nil nil {}))
-
-  ([changes objects file-id component-id position page libraries old-id parent-id frame-id
+  ([changes objects file-id component-id position page libraries old-id parent-id frame-id params]
+   (generate-instantiate-component changes objects file-id component-id position page libraries old-id parent-id frame-id {} params))
+  ([changes objects file-id component-id position page libraries old-id parent-id frame-id ids-map
     {:keys [force-frame?]
      :or {force-frame? false}}]
+
    (let [component     (ctf/get-component libraries file-id component-id)
          library       (get libraries file-id)
          parent        (when parent-id (get objects parent-id))
@@ -235,6 +249,9 @@
                                       (:data library)
                                       position
                                       (cond-> {}
+                                        (contains? ids-map old-id)
+                                        (assoc :force-id (get ids-map old-id))
+
                                         force-frame?
                                         (assoc :force-frame-id frame-id)))
 
@@ -256,8 +273,11 @@
          (cond-> (pcb/add-object changes first-shape {:ignore-touched true})
            (some? old-id) (pcb/amend-last-change #(assoc % :old-id old-id)))
 
+         duplicated-parent?
+         (->> ids-map vals (some #(= % (:parent-id first-shape))))
+
          changes
-         (if (ctl/grid-layout? objects (:parent-id first-shape))
+         (if (and (ctl/grid-layout? objects (:parent-id first-shape)) (not duplicated-parent?))
            (let [target-cell (-> position meta :cell)
 
                  [row column]
@@ -285,6 +305,7 @@
 
 (declare generate-detach-recursive)
 (declare generate-advance-nesting-level)
+(declare generate-detach-immediate)
 
 (defn generate-detach-instance
   "Generate changes to remove the links between a shape and all its children
@@ -298,59 +319,83 @@
 (defn- generate-detach-recursive
   [changes container libraries shape-id first component-root?]
   (let [shape (ctn/get-shape container shape-id)]
+    (shape-log :trace shape-id container
+               :msg "  Processing" :shape-id shape-id)
     (if (and (ctk/instance-head? shape) (not first))
       ; Subinstances are not detached
       (cond-> changes
         component-root?
         ; If the initial shape was component-root, first level subinstances are converted in top instances
-        (pcb/update-shapes [shape-id] #(assoc % :component-root true))
+        (pcb/update-shapes [shape-id] #(do (log/trace :msg "  -> promote to root")
+                                           (assoc % :component-root true)))
 
         :always
         ; First level subinstances of a detached component can't have swap-slot
-        (pcb/update-shapes [shape-id] ctk/remove-swap-slot)
+        (pcb/update-shapes [shape-id] #(do (log/trace :msg "  -> remove swap-slot")
+                                           (ctk/remove-swap-slot %)))
 
         (nil? (ctk/get-swap-slot shape))
-        ; Near shape-refs need to be advanced one level (except if the head is already swapped)
+        ; Near shape-ref of shape and children need to be advanced one level
+        ; (except if the head is already swapped)
         (generate-advance-nesting-level nil container libraries (:id shape)))
 
       ;; Otherwise, detach the shape and all children
       (let [children-ids (:shapes shape)]
+        (log/trace :msg "  -> detach")
         (reduce #(generate-detach-recursive %1 container libraries %2 false component-root?)
                 (pcb/update-shapes changes [(:id shape)] ctk/detach-shape)
                 children-ids)))))
 
 (defn- generate-advance-nesting-level
   [changes file container libraries shape-id]
-  (let [children (cfh/get-children-with-self (:objects container) shape-id)
-        skip-near (fn [changes shape]
-                    (let [ref-shape (ctf/find-ref-shape file container libraries shape {:include-deleted? true})]
-                      (cond-> changes
-                        (some? (:shape-ref ref-shape))
-                        (pcb/update-shapes [(:id shape)] #(assoc % :shape-ref (:shape-ref ref-shape)))
+  (log/trace :msg "  -> advance-nesting-level")
+  (let [detached-ids (atom #{})
+        children  (cfh/get-children-with-self (:objects container) shape-id)  ;; TODO: this function should be refactored to be a recursive tree traversal.
+        skip-near (fn [changes shape]                                         ;;       this way we could shake the tree more easily when detaching shapes
+                    (shape-log :trace (:id shape) container                   ;;       and perhaps even allow to recover nested instances that have been
+                               :msg "     * advancing" :shape-id (:id shape)) ;;       swapped and so we can access the main instance again.
+                    (if (contains? @detached-ids (:id shape))
+                      (do (log/trace :msg "       (detached)")
+                          changes)
+                      (let [ref-shape (ctf/find-ref-shape file container libraries shape {:include-deleted? true})]
+                        (cond-> changes
+                          (some? (:shape-ref ref-shape))
+                          (pcb/update-shapes [(:id shape)] #(do (log/trace :msg "       (advanced)")
+                                                                (assoc % :shape-ref (:shape-ref ref-shape))))
 
-                        ;; When advancing level, the normal touched groups (not swap slots) of the
-                        ;; ref-shape must be merged into the current shape, because they refer to
-                        ;; the new referenced shape.
-                        (some? ref-shape)
-                        (pcb/update-shapes
-                         [(:id shape)]
-                         #(assoc % :touched
-                                 (clojure.set/union (:touched shape)
-                                                    (ctk/normal-touched-groups ref-shape))))
+                          ;; When advancing level, the normal touched groups (not swap slots) of the
+                          ;; ref-shape must be merged into the current shape, because they refer to
+                          ;; the new referenced shape.
+                          (some? ref-shape)
+                          (pcb/update-shapes
+                           [(:id shape)]
+                           #(do (log/trace :msg "       (merge touched)")
+                                (assoc % :touched
+                                       (clojure.set/union (:touched shape)
+                                                          (ctk/normal-touched-groups ref-shape)))))
 
-                        ;; Swap slot must also be copied if the current shape has not any,
-                        ;; except if this is the first level subcopy.
-                        (and (some? (ctk/get-swap-slot ref-shape))
-                             (nil? (ctk/get-swap-slot shape))
-                             (not= (:id shape) shape-id))
-                        (pcb/update-shapes [(:id shape)] #(ctk/set-swap-slot % (ctk/get-swap-slot ref-shape)))
+                          ;; Swap slot must also be copied if the current shape has not any,
+                          ;; except if this is the first level subcopy.
+                          (and (some? (ctk/get-swap-slot ref-shape))
+                               (nil? (ctk/get-swap-slot shape))
+                               (not= (:id shape) shape-id))
+                          (pcb/update-shapes [(:id shape)] #(do (log/trace :msg "       (got swap-slot)")
+                                                                (ctk/set-swap-slot % (ctk/get-swap-slot ref-shape))))
 
-                        ;; If we can't get the ref-shape (e.g. it's in an external library not linked),
-                        ;: we can't do a suitable advance. So it's better to detach the shape
-                        (nil? ref-shape)
-                        (pcb/update-shapes [(:id shape)] ctk/detach-shape))))]
+                          ;; If we can't get the ref-shape (e.g. it's in an external library not linked),
+                          ;: we can't do a suitable advance. So it's better to detach the shape and all its
+                          ;; children (and add to detached-ids so they are not processed again).
+                          (nil? ref-shape)
+                          (generate-detach-immediate container (:id shape) detached-ids)))))]
 
     (reduce skip-near changes children)))
+
+(defn- generate-detach-immediate
+  [changes container shape-id detached-ids]
+  (let [shape-and-children (cfh/get-children-ids-with-self (:objects container) shape-id)]
+    (log/trace :msg "       (cannot advance; detach shape and children)")
+    (swap! detached-ids #(into % shape-and-children))
+    (pcb/update-shapes changes shape-and-children ctk/detach-shape)))
 
 (defn prepare-restore-component
   ([changes library-data component-id current-page]
@@ -394,6 +439,8 @@
                              (not inside-component?)
                              (assoc :component-root true))
 
+         restoring-into-parent (get objects (:parent-id first-shape))
+
          changes           (-> changes
                                (pcb/with-page page)
                                (pcb/with-objects (:objects page))
@@ -404,12 +451,15 @@
                                    changes
                                    (rest moved-shapes))
          changes           (cond-> changes
-                             ;; Remove variant info when restoring into a parent that is not a variant-container
-                             (and is-variant? parent (not (ctk/is-variant-container? parent)))
+                             ;; Transform variant info into name when restoring into a parent that is not a variant-container,
+                             ;; or when restoring into a variant-container that doesn't exists anymore
+                             (and is-variant?
+                                  (or (and parent (not (ctk/is-variant-container? parent)))
+                                      (nil? restoring-into-parent)))
                              (clvp/generate-make-shapes-no-variant [first-shape])
                              ;; Add variant info and rename when restoring into a variant-container
-                             (ctk/is-variant-container? parent)
-                             (clvp/generate-make-shapes-variant [first-shape] parent))]
+                             (ctk/is-variant-container? restoring-into-parent)
+                             (clvp/generate-make-shapes-variant [first-shape] restoring-into-parent))]
      {:changes (pcb/restore-component changes component-id (:id page) minusdelta)
       :shape (first moved-shapes)})))
 
@@ -547,7 +597,7 @@
     (generate-sync-shape-direct changes file libraries container shape-id false)))
 
 (defmethod generate-sync-shape :colors
-  [_ changes library-id _ shape _ libraries _]
+  [_ changes library-id _ shape libraries _]
   (shape-log :debug (:id shape) nil :msg "Sync colors of shape" :shape (:name shape))
 
   ;; Synchronize a shape that uses some colors of the library. The value of the
@@ -558,7 +608,7 @@
                        #(ctc/sync-shape-colors % library-id library-colors))))
 
 (defmethod generate-sync-shape :typographies
-  [_ changes library-id container shape _ libraries _]
+  [_ changes library-id container shape libraries _]
   (shape-log :debug (:id shape) nil :msg "Sync typographies of shape" :shape (:name shape))
 
   ;; Synchronize a shape that uses some typographies of the library. The attributes
@@ -1571,6 +1621,105 @@
                                                      :val dest-tokens
                                                      :ignore-touched true}]}))))))
 
+(defn- generate-update-tokens
+  [changes container dest-shape origin-shape touched omit-touched?]
+  (let [attrs (->> (seq (keys ctk/sync-attrs))
+                   ;; We don't update the flex-child attrs
+                   (remove #(= :layout-grid-cells %)))
+
+        applied-tokens (reduce (fn [applied-tokens attr]
+                                 (let [attr-group (get ctk/sync-attrs attr)
+                                       token-attrs (cto/shape-attr->token-attrs attr)]
+                                   (if (not (and (touched attr-group)
+                                                 omit-touched?))
+                                     (into applied-tokens token-attrs)
+                                     applied-tokens)))
+                               #{}
+                               attrs)]
+    (cond-> changes
+      (seq applied-tokens)
+      (update-tokens container dest-shape origin-shape applied-tokens))))
+
+(defn- add-update-attr-changes
+  [changes dest-shape container roperations uoperations]
+  (let [all-parents (cfh/get-parent-ids (:objects container)
+                                        (:id dest-shape))]
+    (-> changes
+        (update :redo-changes conj (make-change
+                                    container
+                                    {:type :mod-obj
+                                     :id (:id dest-shape)
+                                     :operations roperations}))
+        (update :redo-changes conj (make-change
+                                    container
+                                    {:type :reg-objects
+                                     :shapes all-parents}))
+        (update :undo-changes conj (make-change
+                                    container
+                                    {:type :mod-obj
+                                     :id (:id dest-shape)
+                                     :operations (vec uoperations)}))
+        (update :undo-changes concat [(make-change
+                                       container
+                                       {:type :reg-objects
+                                        :shapes all-parents})]))))
+
+
+(defn- text-partial-change-value
+  [touched-shape untouched-shape touched]
+  (cond
+    (touched :text-content-structure-same-attrs)
+    ;; Keep the touched-shape structure and texts, update its attrs to make them like the untouched-shape
+    (cttx/copy-attrs-keys touched-shape (cttx/get-first-paragraph-text-attrs untouched-shape))
+
+    (touched :text-content-text)
+    ;; Keep the texts touched in touched-shape copy the texts from dest over the attrs of untouched-shape
+    (cttx/copy-text-keys touched-shape untouched-shape)
+
+    (touched :text-content-attribute)
+    ;; Keep the attrs touched in touched-shape copy the texts from untouched-shape over the attrs of touched-shape
+    (cttx/copy-text-keys untouched-shape touched-shape)))
+
+(defn- add-update-attr-operations
+  [attr dest-shape roperations uoperations attr-val]
+  (let [roperation {:type :set
+                    :attr attr
+                    :val attr-val
+                    :ignore-touched true}
+        uoperation {:type :set
+                    :attr attr
+                    :val (get dest-shape attr)
+                    :ignore-touched true}]
+    [(conj roperations roperation)
+     (conj uoperations uoperation)]))
+
+(defn- is-text-partial-change?
+  "Check if the attr update is a text partial change"
+  [untouched-shape touched-shape]
+  (let [touched             (get touched-shape :touched #{})
+        partial-text-keys   [:text-content-attribute :text-content-text]
+        active-keys         (filter touched partial-text-keys)
+        untouched-content   (:content untouched-shape)
+        untouched-attrs     (cttx/get-first-paragraph-text-attrs untouched-content)
+        eq-untouched-attrs? (cttx/equal-attrs? untouched-content untouched-attrs)]
+    (and
+     (or
+     ;; One and only one of the keys is pressent
+      (= 1 (count active-keys))
+      (and
+       (not (touched :text-content-attribute))
+       (touched :text-content-structure-same-attrs)))
+
+     (or
+      ;; Both has the same structure
+      (cttx/equal-structure? untouched-content (:content touched-shape))
+
+      ;; The origin and destiny have different structures, but each have the same attrs
+      ;; for all the items on its content tree
+      (and
+       eq-untouched-attrs?
+       (touched :text-content-structure-same-attrs))))))
+
 (defn- update-attrs
   "The main function that implements the attribute sync algorithm. Copy
   attributes that have changed in the origin shape to the dest shape.
@@ -1601,97 +1750,172 @@
         origin-shape (reposition-shape origin-shape origin-root dest-root)
         touched      (get dest-shape :touched #{})]
 
-    (loop [attrs (->> (seq (keys ctk/sync-attrs))
-                      ;; We don't update the flex-child attrs
-                      (remove ctk/swap-keep-attrs)
-                      ;; We don't do automatic update of the `layout-grid-cells` property.
-                      (remove #(= :layout-grid-cells %)))
-           applied-tokens #{}
+    (loop [attrs updatable-attrs
            roperations []
            uoperations '()]
 
       (let [attr (first attrs)]
         (if (nil? attr)
-          (if (and (empty? roperations) (empty? applied-tokens))
-            changes
-            (let [all-parents (cfh/get-parent-ids (:objects container)
-                                                  (:id dest-shape))
+          (cond-> changes
+            (seq roperations)
+            (add-update-attr-changes dest-shape container roperations uoperations)
+            :always
+            (generate-update-tokens container dest-shape origin-shape touched omit-touched?))
 
-                  ;; Sync tokens of attributes ignored above.
-                  ;; FIXME: this probably may be merged with the other calculation
-                  ;;        of applied tokens, below, and to the calculation only once
-                  ;;        for all sync-attrs.
-                  applied-tokens (reduce (fn [applied-tokens attr]
-                                           (let [attr-group (get ctk/sync-attrs attr)
-                                                 token-attrs (cto/shape-attr->token-attrs attr)]
-                                             (if (not (and (touched attr-group)
-                                                           omit-touched?))
-                                               (into applied-tokens token-attrs)
-                                               applied-tokens)))
-                                         applied-tokens
-                                         ctk/swap-keep-attrs)]
-              (cond-> changes
-                (seq roperations)
-                (-> (update :redo-changes conj (make-change
-                                                container
-                                                {:type :mod-obj
-                                                 :id (:id dest-shape)
-                                                 :operations roperations}))
-                    (update :redo-changes conj (make-change
-                                                container
-                                                {:type :reg-objects
-                                                 :shapes all-parents}))
-                    (update :undo-changes conj (make-change
-                                                container
-                                                {:type :mod-obj
-                                                 :id (:id dest-shape)
-                                                 :operations (vec uoperations)}))
-                    (update :undo-changes concat [(make-change
-                                                   container
-                                                   {:type :reg-objects
-                                                    :shapes all-parents})]))
-                (seq applied-tokens)
-                (update-tokens container dest-shape origin-shape applied-tokens))))
-
-          (let [;; position-data is a special case because can be affected by :geometry-group and :content-group
-                ;; so, if the position-data changes but the geometry is touched we need to reset the position-data
+          (let [attr-group        (get ctk/sync-attrs attr)
+                ;; position-data is a special case because can be affected by
+                ;; :geometry-group and :content-group so, if the position-data
+                ;; changes but the geometry is touched we need to reset the position-data
                 ;; so it's calculated again
-                reset-pos-data?
-                (and (cfh/text-shape? origin-shape)
-                     (= attr :position-data)
-                     (not= (get origin-shape attr) (get dest-shape attr))
-                     (touched :geometry-group))
+                reset-pos-data? (and (cfh/text-shape? origin-shape)
+                                     (= attr :position-data)
+                                     (not= (:position-data origin-shape) (:position-data dest-shape))
+                                     (touched :geometry-group))
 
-                roperation {:type :set
-                            :attr attr
-                            :val (cond
-                                   ;; If position data changes and the geometry group is touched
-                                   ;; we need to put to nil so we can regenerate it
-                                   reset-pos-data? nil
-                                   :else (get origin-shape attr))
-                            :ignore-touched true}
-                uoperation {:type :set
-                            :attr attr
-                            :val (get dest-shape attr)
-                            :ignore-touched true}
+                ;; On texts, when we want to omit the touched attrs, both text (the actual letters)
+                ;; and attrs (bold, font, etc) are in the same attr :content.
+                ;; If only one of them is touched, we want to adress this case and
+                ;; only update the untouched one
+                text-partial-change?
+                (when (and
+                       omit-touched?
+                       (cfh/text-shape? origin-shape)
+                       (= :content attr)
+                       (touched attr-group))
+                  (is-text-partial-change? origin-shape dest-shape))
 
-                attr-group (get ctk/sync-attrs attr)
+                skip-operations?
+                (or (= (get origin-shape attr) (get dest-shape attr))
+                    (and (touched attr-group)
+                         omit-touched?
+                         ;; When it is a text-partial-change, we should generate operations
+                         ;; even when omit-touched? is true, but updating only the text or
+                         ;; the attributes, omiting the other part
+                         (not text-partial-change?)))
 
-                token-attrs (cto/shape-attr->token-attrs attr)
-                applied-tokens' (cond-> applied-tokens
-                                  (not (and (touched attr-group)
-                                            omit-touched?))
-                                  (into token-attrs))]
-            (if (or (= (get origin-shape attr) (get dest-shape attr))
-                    (and (touched attr-group) omit-touched?))
-              (recur (next attrs)
-                     applied-tokens'
-                     roperations
-                     uoperations)
-              (recur (next attrs)
-                     applied-tokens'
-                     (conj roperations roperation)
-                     (conj uoperations uoperation)))))))))
+                attr-val (when-not skip-operations?
+                           (cond
+                             ;; If position data changes and the geometry group is touched
+                             ;; we need to put to nil so we can regenerate it
+                             reset-pos-data?
+                             nil
+
+                             text-partial-change?
+                             (text-partial-change-value (:content dest-shape)
+                                                        (:content origin-shape)
+                                                        touched)
+
+                             :else
+                             (get origin-shape attr)))
+
+                [roperations' uoperations']
+                (if skip-operations?
+                  [roperations uoperations]
+                  (add-update-attr-operations attr dest-shape roperations uoperations attr-val))]
+            (recur (next attrs)
+                   roperations'
+                   uoperations')))))))
+
+(defn update-attrs-on-switch
+  "Copy attributes that have changed in the shape previous to the switch
+   to the current shape (post switch). Used only on variants switch"
+  ;; NOTE: This function have similitudes but is very different to
+  ;; update-attrs:
+  ;; In components (update-attrs), the source shape is "clean", and the destination
+  ;; shape may have touched elements that shouldn't be overwritten.
+  ;; In variants (update-attrs-on-switch), the destination shape is "clean",
+  ;; and it's the source shape that may have touched elements, and we only want
+  ;; to copy those touched elements.
+  [changes current-shape previous-shape current-root prev-root origin-ref-shape container]
+  (let [;; We need to sync only the position relative to the origin of the component.
+        ;; (see update-attrs for a full explanation)
+        previous-shape (reposition-shape previous-shape prev-root current-root)
+        touched        (get previous-shape :touched #{})]
+
+    (loop [attrs       updatable-attrs
+           roperations [{:type :set-touched :touched (:touched previous-shape)}]
+           uoperations (list {:type :set-touched :touched (:touched current-shape)})]
+      (if-let [attr (first attrs)]
+        (let [attr-group (get ctk/sync-attrs attr)
+              skip-operations?
+              (or
+               ;; If the attribute is not valid for the destiny, don't copy it
+               (not (cts/is-allowed-attr? attr (:type current-shape)))
+
+               ;; If the values are already equal, don't copy them
+               (= (get previous-shape attr) (get current-shape attr))
+
+               ;; If both variants (origin and destiny) don't have the same value
+               ;; for that attribute, don't copy it.
+               ;; Exceptions: :points :selrect and :content can be different
+               ;;
+               ;; Sample:
+               ;; 1. We have a variant with C1 (bg red) and C2 (bg blue).
+               ;; 2. We make a copy of C1 called Copy.
+               ;; 3. We set Copy’s bg to green (so it it has an override on the bg).
+               ;; 4. We switch Copy to use C2 as base.
+               ;; 5. The bg of Copy now is blue (we ignore the override)
+               (and
+                (not (contains? #{:points :selrect :content} attr))
+                (not= (get origin-ref-shape attr) (get current-shape attr)))
+
+               ;; The :content attr cant't be copied to elements of different type
+               (and (= attr :content) (not= (:type previous-shape) (:type current-shape)))
+
+               ;; If the attr is not touched, don't copy it
+               (not (touched attr-group)))
+
+              ;; On texts, both text (the actual letters)
+              ;; and attrs (bold, font, etc) are in the same attr :content.
+              ;; If only one of them is touched, we want to adress this case and
+              ;; only update the untouched one
+              text-partial-change?
+              (when (and
+                     (not skip-operations?)
+                     (cfh/text-shape? current-shape)
+                     (cfh/text-shape? previous-shape)
+                     (= :content attr)
+                     (touched attr-group))
+                (is-text-partial-change? current-shape previous-shape))
+
+              ;; position-data is a special case because can be affected by :geometry-group and :content-group
+              ;; so, if the position-data changes but the geometry is touched we need to reset the position-data
+              ;; so it's calculated again
+              reset-pos-data? (and
+                               (not skip-operations?)
+                               (cfh/text-shape? previous-shape)
+                               (= attr :position-data)
+                               (not= (:position-data previous-shape) (:position-data current-shape))
+                               (touched :geometry-group))
+
+              attr-val (when-not skip-operations?
+                         (cond
+                           ;; If position data changes and the geometry group is touched
+                           ;; we need to put to nil so we can regenerate it
+                           reset-pos-data?
+                           nil
+
+                           text-partial-change?
+                           (text-partial-change-value (:content previous-shape)
+                                                      (:content current-shape)
+                                                      touched)
+
+                           :else
+                           (get previous-shape attr)))
+
+              [roperations' uoperations']
+              (if skip-operations?
+                [roperations uoperations]
+                (add-update-attr-operations attr current-shape roperations uoperations attr-val))]
+          (recur (next attrs)
+                 roperations'
+                 uoperations'))
+        (cond-> changes
+          (> (count roperations) 1)
+          (add-update-attr-changes current-shape container roperations uoperations)
+
+          :always
+          (generate-update-tokens container current-shape previous-shape touched false))))))
 
 (defn- propagate-attrs
   "Helper that puts the origin attributes (attrs) into dest but only if
@@ -1947,17 +2171,27 @@
   [changes library-data component-id library-id current-page objects]
   (let [{:keys [changes shape]} (prepare-restore-component changes library-data component-id current-page)
         parent-id (:parent-id shape)
-        objects (cond-> (assoc objects (:id shape) shape)
-                  (not (nil? parent-id))
-                  (update-in [parent-id :shapes]
-                             #(conj % (:id shape))))
+
+        insert-before?
+        (and (ctl/flex-layout? objects parent-id)
+             (not (ctl/reverse? objects parent-id)))
+
+        objects
+        (-> objects
+            (assoc (:id shape) shape)
+            (cond-> (and (some? parent-id) insert-before?)
+              (update-in [parent-id :shapes] #(d/concat-vec [(:id shape)] %)))
+            (cond-> (and (some? parent-id) (not insert-before?))
+              (update-in [parent-id :shapes] conj (:id shape))))
 
         ;; Adds a resize-parents operation so the groups are updated. We add all the new objects
         new-objects-ids (->> changes :redo-changes (filter #(= (:type %) :add-obj)) (mapv :id))
         changes (-> changes
                     (pcb/with-objects objects)
-                    (pcb/resize-parents new-objects-ids))]
-
+                    (pcb/resize-parents new-objects-ids)
+                    ;; Fix the order of the children inside the parent
+                    (cond-> (ctl/any-layout? objects parent-id)
+                      (pcb/reorder-children parent-id (get-in objects [parent-id :shapes]))))]
     (assoc changes :file-id library-id)))
 
 (defn generate-detach-component
@@ -2092,7 +2326,9 @@
                               :starting-frame frame-id}]
 
                 (vswap! unames conj name)
-                (pcb/set-flow changes flow-id new-flow)))
+                (-> changes
+                    (pcb/with-page page)
+                    (pcb/set-flow flow-id new-flow))))
 
             changes
             (->> shapes
@@ -2130,7 +2366,7 @@
             frames)))
 
 (defn- duplicate-variant
-  [changes library component base-pos parent-id]
+  [changes library component base-pos parent-id page-id]
   (let [component-page   (ctpl/get-page (:data library) (:main-instance-page component))
         component-shape  (dm/get-in component-page [:objects (:main-instance-id component)])
         orig-pos         (gpt/point (:x component-shape) (:y component-shape))
@@ -2138,11 +2374,12 @@
         new-component-id (uuid/next)
         [shape changes]  (generate-duplicate-component changes
                                                        library
-                                                       (:component-id component-shape)
+                                                       (:id component)
                                                        new-component-id
                                                        {:apply-changes-local-library? true
                                                         :delta delta
-                                                        :new-variant-id parent-id})]
+                                                        :new-variant-id parent-id
+                                                        :page-id page-id})]
     [shape
      (-> changes
          (pcb/change-parent parent-id [shape]))]))
@@ -2182,7 +2419,8 @@
                                (get libraries file-id)
                                component
                                pos
-                               parent-id)
+                               parent-id
+                               (:id page))
 
             (generate-instantiate-component changes
                                             objects
@@ -2194,6 +2432,7 @@
                                             main-id
                                             parent-id
                                             frame-id
+                                            ids-map
                                             {})))]
     changes))
 
@@ -2283,8 +2522,9 @@
                (cond-> (ctk/is-variant-container? parent)
                  (assoc :variant-id parent-id))
 
-               (cond-> (not (ctk/is-variant-container? parent))
-                 (dissoc :variant-id)))
+               (cond-> (and (ctk/is-variant? obj) (not (ctk/is-variant-container? parent)))
+                 (-> (assoc :name (ctv/variant-name-to-name obj))
+                     (dissoc :variant-id))))
 
            new-obj (cond-> new-obj
                      (not duplicating-component?)

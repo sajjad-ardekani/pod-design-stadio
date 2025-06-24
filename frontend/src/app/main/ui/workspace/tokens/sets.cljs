@@ -10,7 +10,7 @@
    [app.common.data.macros :as dm]
    [app.common.types.tokens-lib :as ctob]
    [app.main.data.event :as ev]
-   [app.main.data.tokens :as dt]
+   [app.main.data.workspace.tokens.library-edit :as dwtl]
    [app.main.refs :as refs]
    [app.main.store :as st]
    [app.main.ui.context :as ctx]
@@ -31,39 +31,39 @@
 
 (defn- on-start-creation
   []
-  (st/emit! (dt/start-token-set-creation [])))
+  (st/emit! (dwtl/start-token-set-creation [])))
 
 (defn- on-toggle-token-set-click [name]
-  (st/emit! (dt/toggle-token-set name)))
+  (st/emit! (dwtl/toggle-token-set name)))
 
 (defn- on-toggle-token-set-group-click [path]
-  (st/emit! (dt/toggle-token-set-group path)))
+  (st/emit! (dwtl/toggle-token-set-group path)))
 
 (defn- on-select-token-set-click [name]
-  (st/emit! (dt/set-selected-token-set-name name)))
+  (st/emit! (dwtl/set-selected-token-set-name name)))
 
 (defn on-update-token-set
   [token-set name]
-  (st/emit! (dt/clear-token-set-edition)
-            (dt/update-token-set token-set name)))
+  (st/emit! (dwtl/clear-token-set-edition)
+            (dwtl/update-token-set token-set name)))
 
 (defn- on-update-token-set-group
   [path name]
-  (st/emit! (dt/clear-token-set-edition)
-            (dt/rename-token-set-group path name)))
+  (st/emit! (dwtl/clear-token-set-edition)
+            (dwtl/rename-token-set-group path name)))
 
 (defn- on-create-token-set
   [parent-set name]
   (let [;; FIXME: this code should be reusable under helper under
         ;; common types namespace
         name
-        (if-let [parent-path (ctob/get-token-set-path parent-set)]
-          (->> (concat parent-path (ctob/split-token-set-name name))
+        (if-let [parent-path (ctob/get-set-path parent-set)]
+          (->> (concat parent-path (ctob/split-set-name name))
                (ctob/join-set-path))
           (ctob/normalize-set-name name))]
 
     (st/emit! (ptk/data-event ::ev/event {::ev/name "create-token-set" :name name})
-              (dt/create-token-set name))))
+              (dwtl/create-token-set name))))
 
 (defn group-edition-id
   "Prefix editing groups `edition-id` so it can be differentiated from sets with the same id."
@@ -101,7 +101,7 @@
       :on-key-down on-key-down
       :maxlength "256"
       :auto-focus true
-      :placeholder (tr "workspace.token.set-edit-placeholder")
+      :placeholder (tr "workspace.tokens.set-edit-placeholder")
       :default-value default-value}]))
 
 (mf/defc checkbox*
@@ -113,7 +113,7 @@
     [:div {:role "checkbox"
            :aria-checked (dm/str checked)
            :disabled disabled
-           :title (when disabled (tr "workspace.token.no-permisions-set"))
+           :title (when disabled (tr "workspace.tokens.no-permisions-set"))
            :tab-index 0
            :class (stl/css-case :checkbox-style true
                                 :checkbox-checked-style checked?
@@ -134,20 +134,20 @@
     (if can-edit?
       [:div {:class (stl/css :empty-sets-wrapper)}
        [:> text* {:as "span" :typography "body-small" :class (stl/css :empty-state-message)}
-        (tr "workspace.token.no-sets-yet")]
+        (tr "workspace.tokens.no-sets-yet")]
        [:button {:on-click on-start-creation
                  :class (stl/css :create-set-button)}
-        (tr "workspace.token.create-one")]]
+        (tr "workspace.tokens.create-one")]]
       [:div {:class (stl/css :empty-sets-wrapper)}
        [:> text* {:as "span" :typography "body-small" :class (stl/css :empty-state-message)}
-        (tr "workspace.token.no-sets-yet")]])))
+        (tr "workspace.tokens.no-sets-yet")]])))
 
 (mf/defc add-button*
   []
   [:> icon-button* {:variant "ghost"
                     :icon "add"
                     :on-click on-start-creation
-                    :aria-label (tr "workspace.token.add set")}])
+                    :aria-label (tr "workspace.tokens.add set")}])
 
 (mf/defc sets-tree-set-group*
   {::mf/private true}
@@ -167,7 +167,7 @@
            (dom/prevent-default event)
            (dom/stop-propagation event)
            (when (and can-edit? (not is-editing))
-             (st/emit! (dt/assign-token-set-context-menu
+             (st/emit! (dwtl/assign-token-set-context-menu
                         {:position (dom/get-client-position event)
                          :is-group true
                          :id id
@@ -210,8 +210,6 @@
          :draggable? is-draggable)]
 
     [:div {:ref dref
-           :role "button"
-           :aria-labelledby label-id
            :data-testid "tokens-set-group-item"
            :style {"--tree-depth" tree-depth}
            :class (stl/css-case :set-item-container true
@@ -224,6 +222,7 @@
      [:> icon-button*
       {:class (stl/css :set-item-group-collapse-button)
        :on-click on-collapse-click
+       :data-testid "tokens-set-group-collapse"
        :aria-label (tr "labels.collapse")
        :icon (if is-collapsed "arrow-right" "arrow-down")
        :variant "action"}]
@@ -234,7 +233,9 @@
          :on-submit on-edit-submit'}]
        [:*
         [:div {:class (stl/css :set-name)
+               :role "button"
                :title label
+               :tab-index 0
                :on-double-click on-double-click
                :id label-id}
          label]
@@ -245,7 +246,7 @@
                      :all true
                      :partial "mixed"
                      :none false)
-          :arial-label (tr "workspace.token.select-set")}]])]))
+          :arial-label (tr "workspace.tokens.select-set")}]])]))
 
 (mf/defc sets-tree-set*
   [{:keys [id set label tree-depth tree-path tree-index is-selected is-active is-draggable is-editing
@@ -270,7 +271,7 @@
            (dom/prevent-default event)
            (dom/stop-propagation event)
            (when (and can-edit? (not is-editing))
-             (st/emit! (dt/assign-token-set-context-menu
+             (st/emit! (dwtl/assign-token-set-context-menu
                         {:position (dom/get-client-position event)
                          :is-group false
                          :id id
@@ -328,6 +329,7 @@
                                 :dnd-over-top (= drop-over :top)
                                 :dnd-over-bot (= drop-over :bot))
            :on-click on-click
+           :on-double-click on-double-click
            :on-context-menu on-context-menu
            :aria-checked is-active}
 
@@ -341,13 +343,12 @@
          :on-cancel on-reset-edition
          :on-submit on-edit-submit'}]
        [:*
-        [:div {:class (stl/css :set-name)
-               :on-double-click on-double-click}
+        [:div {:class (stl/css :set-name)}
          label]
         [:> checkbox*
          {:on-click on-checkbox-click
           :disabled (not can-edit?)
-          :arial-label (tr "workspace.token.select-set")
+          :arial-label (tr "workspace.tokens.select-set")
           :checked is-active}]])]))
 
 (mf/defc token-sets-tree*
@@ -383,8 +384,8 @@
                          :position position
                          :collapsed-paths collapsed-paths}]
              (if (:is-group data)
-               (st/emit! (dt/drop-token-set-group params))
-               (st/emit! (dt/drop-token-set params))))))
+               (st/emit! (dwtl/drop-token-set-group params))
+               (st/emit! (dwtl/drop-token-set params))))))
 
         on-toggle-collapse
         (mf/use-fn
@@ -511,7 +512,7 @@
     [:div {:class (stl/css :sets-list)}
      (if ^boolean empty-state?
        [:> text* {:as "span" :typography "body-small" :class (stl/css :empty-state-message-sets)}
-        (tr "workspace.token.no-sets-create")]
+        (tr "workspace.tokens.no-sets-create")]
 
        [:> token-sets-tree*
         {:is-draggable draggable?
@@ -560,15 +561,15 @@
          (mf/deps can-edit?)
          (fn [_]
            (when can-edit?
-             (st/emit! (dt/clear-token-set-edition)
-                       (dt/clear-token-set-creation)))))
+             (st/emit! (dwtl/clear-token-set-edition)
+                       (dwtl/clear-token-set-creation)))))
 
         on-start-edition
         (mf/use-fn
          (mf/deps can-edit?)
          (fn [id]
            (when can-edit?
-             (st/emit! (dt/start-token-set-edition id)))))]
+             (st/emit! (dwtl/start-token-set-edition id)))))]
 
     [:> controlled-sets-list*
      {:token-sets token-sets

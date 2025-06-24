@@ -322,12 +322,13 @@
        (let [size-options [8 9 10 11 12 14 16 18 24 36 48 72]
              size-options (if (= font-size :multiple) (into [""] size-options) size-options)]
          [:& editable-select
-          {:value (attr->string font-size)
+          {:value (if (= font-size :multiple) :multiple (attr->string font-size))
            :class (stl/css :font-size-select)
+           :aria-label (tr "inspect.attributes.typography.font-size")
            :input-class (stl/css :numeric-input)
            :options size-options
            :type "number"
-           :placeholder "--"
+           :placeholder (tr "settings.multiple")
            :min 3
            :max 1000
            :on-change on-font-size-change
@@ -359,11 +360,8 @@
   [{:keys [values on-change on-blur]}]
   (let [{:keys [line-height
                 letter-spacing]} values
-
         line-height (or line-height "1.2")
         letter-spacing (or letter-spacing "0")
-        line-height-nillable (if (= (str line-height) "1.2") false true)
-
         handle-change
         (fn [value attr]
           (on-change {attr (str value)}))]
@@ -378,11 +376,11 @@
        {:min -200
         :max 200
         :step 0.1
-        :default "1.2"
+        :default-value "1.2"
         :class (stl/css :line-height-input)
         :value (attr->string line-height)
-        :placeholder (tr "settings.multiple")
-        :nillable line-height-nillable
+        :placeholder (if (= :multiple line-height) (tr "settings.multiple") "--")
+        :nillable (= :multiple line-height)
         :on-change #(handle-change % :line-height)
         :on-blur on-blur}]]
 
@@ -396,10 +394,12 @@
        {:min -200
         :max 200
         :step 0.1
+        :default-value "0"
         :class (stl/css :letter-spacing-input)
         :value (attr->string letter-spacing)
-        :placeholder (tr "settings.multiple")
+        :placeholder (if (= :multiple letter-spacing) (tr "settings.multiple") "--")
         :on-change #(handle-change % :letter-spacing)
+        :nillable (= :multiple letter-spacing)
         :on-blur on-blur}]]]))
 
 (mf/defc text-transform-options

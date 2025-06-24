@@ -116,6 +116,8 @@
     :terms-and-privacy-checkbox
     ;; Only for developtment.
     :tiered-file-data-storage
+    :token-units
+    :token-typography-types
     :transit-readable-response
     :user-feedback
     ;; TODO: remove this flag.
@@ -126,7 +128,8 @@
     :render-wasm-dpr
     :hide-release-modal
     :subscriptions
-    :subscriptions-old})
+    :subscriptions-old
+    :frontend-binary-fills})
 
 (def all-flags
   (set/union email login varia))
@@ -147,7 +150,8 @@
    :enable-onboarding
    :enable-dashboard-templates-section
    :enable-google-fonts-provider
-   :enable-component-thumbnails])
+   :enable-component-thumbnails
+   :enable-render-wasm-dpr])
 
 (defn parse
   [& flags]

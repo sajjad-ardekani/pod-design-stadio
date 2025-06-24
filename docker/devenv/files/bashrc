@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-export JAVA_OPTS=${JAVA_OPTS:-"-Xmx1000m -Xms200m"};
-export PATH=/usr/lib/jvm/openjdk/bin:/usr/local/nodejs/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
-EMSDK_QUIET=1 . /usr/local/emsdk/emsdk_env.sh;
-source /usr/local/cargo/env
+EMSDK_QUIET=1 . /opt/emsdk/emsdk_env.sh;
+
+export PATH="/home/penpot/.cargo/bin:/opt/jdk/bin:/opt/utils/bin:/opt/clojure/bin:/opt/node/bin:/opt/imagick/bin:/opt/cargo/bin:$PATH"
+export CARGO_HOME="/home/penpot/.cargo"
 
 alias l='ls --color -GFlh'
 alias rm='rm -r'

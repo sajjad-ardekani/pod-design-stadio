@@ -1,8 +1,14 @@
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+;;
+;; Copyright (c) KALEIDOS INC
+
 (ns frontend-tests.tokens.logic.token-data-test
   (:require
    [app.common.test-helpers.files :as cthf]
    [app.common.types.tokens-lib :as ctob]
-   [app.main.data.tokens :as dt]
+   [app.main.data.workspace.tokens.library-edit :as dwtl]
    [cljs.test :as t :include-macros true]
    [frontend-tests.helpers.pages :as thp]
    [frontend-tests.helpers.state :as ths]
@@ -27,7 +33,7 @@
     done
     (let [file   (setup-file-with-token-lib)
           store  (ths/setup-store file)
-          events [(dt/duplicate-token-set "Set A" false)]]
+          events [(dwtl/duplicate-token-set "Set A" false)]]
 
       (tohs/run-store-async
        store done events
@@ -46,7 +52,7 @@
     done
     (let [file   (setup-file-with-token-lib)
           store  (ths/setup-store file)
-          events [(dt/duplicate-token-set "Set B" false)]]
+          events [(dwtl/duplicate-token-set "Set B" false)]]
 
       (tohs/run-store-async
        store done events

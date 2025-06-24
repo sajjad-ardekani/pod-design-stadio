@@ -34,7 +34,8 @@
 
 <br />
 
-[Penpot video](https://github.com/penpot/penpot/assets/5446186/b8ad0764-585e-4ddc-b098-9b4090d337cc)
+[Penpot video](https://github.com/user-attachments/assets/7c67fd7c-04d3-4c9b-88ec-b6f5e23f8332
+)
 
 <br />
 
@@ -93,10 +94,9 @@ With Penpot’s standardized [design tokens](https://penpot.dev/collaboration/de
 
 ## Getting started ##
 
-### Install with Elestio ###
-Penpot is the only design & prototype platform that is deployment agnostic. You can use it or deploy it anywhere.
+Penpot is the only design & prototype platform that is deployment agnostic. You can use it in our [SAAS](https://design.penpot.app) or deploy it anywhere.
 
-Learn how to install it with Elestio and Docker, or other options on [our website](https://penpot.app/self-host).
+Learn how to install it with Docker, Kubernetes, Elestio or other options on [our website](https://penpot.app/self-host).
 <br />
 
 <p align="center">
@@ -127,6 +127,12 @@ You will find the following categories:
   <img src="https://github.com/penpot/penpot/assets/5446186/6ac62220-a16c-46c9-ab21-d24ae357ed03" alt="Community" style="width: 65%;">
 </p>
 <br />
+
+### Code of Conduct ###
+
+Anyone who contributes to Penpot, whether through code, in the community, or at an event, must adhere to the
+[code of conduct](https://help.penpot.app/contributing-guide/coc/) and foster a positive and safe environment.
+
 
 ## Contributing ##
 
