@@ -45,7 +45,7 @@
      [:button
       {:class (stl/css :exception-header)
        :on-click on-nav-root}
-      [:> raw-svg* {:id "penpot-logo-icon" :class (stl/css :penpot-logo)}]
+      [:> raw-svg* {:id "podconverge-logo-icon" :class (stl/css :podconverge-logo)}]
       (when profile-id
         [:div {:class (stl/css :go-back-wrapper)}
          [:> icon* {:icon-id "arrow" :class (stl/css :back-arrow)}] [:span (tr "not-found.no-permission.go-dashboard")]])]

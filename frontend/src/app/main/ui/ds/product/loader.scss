@@ -14,6 +14,15 @@
   }
 }
 
+@keyframes fade-in-loader {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .wrapper {
   --loader-color-foreground: var(--color-foreground-secondary);
   --loader-icon-width: unset;
@@ -78,6 +87,7 @@
 .loader {
   fill: currentColor;
   width: var(--icon-width);
+  animation: fade-in-loader 0.5s ease-in-out;
 }
 
 .loader-line {

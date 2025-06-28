@@ -157,17 +157,17 @@
 
     [:article  {:class (stl/css :assets-bar)}
      [:div {:class (stl/css :assets-header)}
-      (when-not ^boolean read-only?
-        (if (and (= num-libs 1) (empty? components))
-          [:button {:class (stl/css :add-library-button)
-                    :on-click show-libraries-dialog
-                    :data-testid "libraries"}
-           (tr "workspace.assets.add-library")]
-
-          [:button {:class (stl/css :libraries-button)
-                    :on-click show-libraries-dialog
-                    :data-testid "libraries"}
-           (tr "workspace.assets.manage-library")]))
+;;       (when-not ^boolean read-only?
+;;         (if (and (= num-libs 1) (empty? components))
+;;           [:button {:class (stl/css :add-library-button)
+;;                     :on-click show-libraries-dialog
+;;                     :data-testid "libraries"}
+;;            (tr "workspace.assets.add-library")]
+;;
+;;           [:button {:class (stl/css :libraries-button)
+;;                     :on-click show-libraries-dialog
+;;                     :data-testid "libraries"}
+;;            (tr "workspace.assets.manage-library")]))
 
 
       [:div {:class (stl/css :search-wrapper)}

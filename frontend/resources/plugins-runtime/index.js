@@ -5082,6 +5082,19 @@ class Bc extends HTMLElement {
     //     })
     //   );
     // }), s.appendChild(c);
+    // SVG icons
+    const minimizeSVG = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 9H13.5" stroke="#292D32" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const maximizeSVG = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 7.485V6.75C1.5 3 3 1.5 6.75 1.5H11.25C15 1.5 16.5 3 16.5 6.75V11.25C16.5 15 15 16.5 11.25 16.5H10.5" stroke="#292D32" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.75 8.25002L13.5075 4.48502H10.5" stroke="#292D32" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5078 4.48502V7.49252" stroke="#292D32" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.25 12.1125V14.1375C8.25 15.825 7.575 16.5 5.8875 16.5H3.8625C2.175 16.5 1.5 15.825 1.5 14.1375V12.1125C1.5 10.425 2.175 9.75 3.8625 9.75H5.8875C7.575 9.75 8.25 10.425 8.25 12.1125Z" stroke="#292D32" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const c = document.createElement("button");
+    c.setAttribute("type", "button"), c.innerHTML = `<div class="minimize">${minimizeSVG}</div>`, c.addEventListener("click", () => {
+      this.shadowRoot && this.shadowRoot.dispatchEvent(
+        new CustomEvent("minimize", {
+          composed: !0,
+          bubbles: !0
+        })
+      );
+    }), s.appendChild(c);
+
     const l = document.createElement("iframe");
     l.src = n, l.allow = "", l.sandbox.add(
       "allow-scripts",
@@ -5104,6 +5117,41 @@ class Bc extends HTMLElement {
     }), this.shadowRoot.appendChild(this.wrapper), this.wrapper.appendChild(at(this, We)), at(this, We).appendChild(s), at(this, We).appendChild(l);
     const u = document.createElement("style");
     u.textContent = Uc, this.shadowRoot.appendChild(u), this.calculateZIndex();
+
+    let isMinimized   = false;
+    let prevHeight    = "536px";
+    let prevMinHeight = "536px";
+    c.addEventListener("click", () => {
+      let wrapperEl = this.shadowRoot?.querySelector(".wrapper");
+
+      if (!wrapperEl && this.shadowRoot) {
+        wrapperEl = this.shadowRoot.host;
+      }
+
+      if (!wrapperEl) {
+        console.warn("Could not find .wrapper to minimize!");
+        return;
+      }
+
+      // On first click: store and collapse
+      if (!isMinimized) {
+        prevHeight    = wrapperEl.style.height;
+        prevMinHeight = wrapperEl.style.minHeight;
+
+        wrapperEl.style.height    = `40px`;
+        wrapperEl.style.minHeight = `40px`;
+
+        c.innerHTML = `<div class="maximize">${maximizeSVG}</div>`;
+      }
+
+      else {
+        wrapperEl.style.height    = prevHeight;
+        wrapperEl.style.minHeight = prevMinHeight;
+        c.innerHTML = `<div class="minimize">${minimizeSVG}</div>`;
+      }
+
+      isMinimized = !isMinimized;
+    });
   }
   size() {
     const r = Number(this.wrapper.style.width.replace("px", "") || "300"), n = Number(this.wrapper.style.height.replace("px", "") || "400");
