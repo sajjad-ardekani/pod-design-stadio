@@ -17,7 +17,7 @@
               (get :tokens-lib)
               (ctob/get-sets)
               (first)
-              :name)))
+              (ctob/get-name))))
 
 (defn get-selected-token-set [state]
   (when-let [set-name (get-selected-token-set-name state)]
@@ -25,10 +25,10 @@
             (get :tokens-lib)
             (ctob/get-set set-name))))
 
-(defn get-token-in-selected-set [state token-name]
+(defn get-token-in-selected-set [state token-id]
   (some-> (get-selected-token-set state)
-          (ctob/get-token token-name)))
+          (ctob/get-token token-id)))
 
 (defn get-all-tokens-in-selected-set [state]
   (some-> (get-selected-token-set state)
-          :tokens))
+          (ctob/get-tokens-map)))

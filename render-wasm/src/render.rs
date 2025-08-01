@@ -12,7 +12,7 @@ mod surfaces;
 mod text;
 mod ui;
 
-use skia_safe::{self as skia, Matrix, RRect, Rect};
+use skia_safe::{self as skia, Matrix, Rect};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
@@ -21,7 +21,8 @@ use options::RenderOptions;
 use surfaces::{SurfaceId, Surfaces};
 
 use crate::performance;
-use crate::shapes::{modified_children_ids, Corners, Fill, Shape, StructureEntry, Type};
+use crate::shapes::{Corners, Fill, Shape, SolidColor, StructureEntry, Type};
+use crate::state::ShapesPool;
 use crate::tiles::{self, PendingTiles, TileRect};
 use crate::uuid::Uuid;
 use crate::view::Viewbox;
@@ -260,7 +261,7 @@ impl RenderState {
         self.images.add(id, image_data)
     }
 
-    pub fn has_image(&mut self, id: &Uuid) -> bool {
+    pub fn has_image(&self, id: &Uuid) -> bool {
         self.images.contains(id)
     }
 
@@ -301,10 +302,12 @@ impl RenderState {
         self.surfaces.reset(self.background_color);
     }
 
+    #[allow(dead_code)]
     pub fn get_canvas_at(&mut self, surface_id: SurfaceId) -> &skia::Canvas {
         self.surfaces.canvas(surface_id)
     }
 
+    #[allow(dead_code)]
     pub fn restore_canvas(&mut self, surface_id: SurfaceId) {
         self.surfaces.canvas(surface_id).restore();
     }
@@ -317,8 +320,11 @@ impl RenderState {
             &tile_rect,
         );
 
-        self.surfaces
-            .draw_cached_tile_surface(self.current_tile.unwrap(), rect);
+        self.surfaces.draw_cached_tile_surface(
+            self.current_tile.unwrap(),
+            rect,
+            self.background_color,
+        );
 
         if self.options.is_debug_visible() {
             debug::render_workspace_current_tile(
@@ -394,7 +400,6 @@ impl RenderState {
         shape: &Shape,
         modifiers: Option<&Matrix>,
         scale_content: Option<&f32>,
-        clip_bounds: Option<(Rect, Option<Corners>, Matrix)>,
     ) {
         let shape = if let Some(scale_content) = scale_content {
             &shape.scale_content(*scale_content)
@@ -411,43 +416,6 @@ impl RenderState {
         });
 
         let antialias = shape.should_use_antialias(self.get_scale());
-
-        // set clipping
-        if let Some((bounds, corners, transform)) = clip_bounds {
-            self.surfaces.apply_mut(surface_ids, |s| {
-                s.canvas().concat(&transform);
-            });
-
-            if let Some(corners) = corners {
-                let rrect = RRect::new_rect_radii(bounds, &corners);
-                self.surfaces.apply_mut(surface_ids, |s| {
-                    s.canvas()
-                        .clip_rrect(rrect, skia::ClipOp::Intersect, antialias);
-                });
-            } else {
-                self.surfaces.apply_mut(surface_ids, |s| {
-                    s.canvas()
-                        .clip_rect(bounds, skia::ClipOp::Intersect, antialias);
-                });
-            }
-
-            // This renders a red line around clipped
-            // shapes (frames).
-            if self.options.is_debug_visible() {
-                let mut paint = skia::Paint::default();
-                paint.set_style(skia::PaintStyle::Stroke);
-                paint.set_color(skia::Color::from_argb(255, 255, 0, 0));
-                paint.set_stroke_width(4.);
-                self.surfaces
-                    .canvas(SurfaceId::Fills)
-                    .draw_rect(bounds, &paint);
-            }
-
-            self.surfaces.apply_mut(surface_ids, |s| {
-                s.canvas()
-                    .concat(&transform.invert().unwrap_or(Matrix::default()));
-            });
-        }
 
         // We don't want to change the value in the global state
         let mut shape: Cow<Shape> = Cow::Borrowed(shape);
@@ -494,37 +462,54 @@ impl RenderState {
                 });
 
                 let text_content = text_content.new_bounds(shape.selrect());
-                let paragraphs = text_content.get_skia_paragraphs(self.fonts.font_collection());
+                let mut paragraphs = text_content.get_skia_paragraphs();
 
-                shadows::render_text_drop_shadows(self, &shape, &paragraphs, antialias);
-                text::render(self, &shape, &paragraphs, None);
-
-                if shape.has_inner_strokes() {
-                    // Inner strokes paints need the text fill to apply correctly their blend modes
-                    // (e.g., SrcATop, DstOver)
-                    text::render(self, &shape, &paragraphs, Some(SurfaceId::Strokes));
+                if !shape.has_visible_strokes() {
+                    shadows::render_text_drop_shadows(self, &shape, &mut paragraphs, antialias);
                 }
 
-                for stroke in shape.strokes().rev() {
-                    let stroke_paragraphs = text_content.get_skia_stroke_paragraphs(
-                        stroke,
-                        &shape.selrect(),
-                        self.fonts.font_collection(),
+                text::render(self, &shape, &mut paragraphs, None, None);
+
+                if shape.has_visible_inner_strokes() {
+                    // Inner strokes paints need the text fill to apply correctly their blend modes
+                    // (e.g., SrcATop, DstOver)
+                    text::render(
+                        self,
+                        &shape,
+                        &mut paragraphs,
+                        Some(SurfaceId::Strokes),
+                        None,
                     );
-                    shadows::render_text_drop_shadows(self, &shape, &stroke_paragraphs, antialias);
+                }
+
+                for stroke in shape.visible_strokes().rev() {
+                    let mut stroke_paragraphs =
+                        text_content.get_skia_stroke_paragraphs(stroke, &shape.selrect());
+                    shadows::render_text_drop_shadows(
+                        self,
+                        &shape,
+                        &mut stroke_paragraphs,
+                        antialias,
+                    );
                     strokes::render(
                         self,
                         &shape,
                         stroke,
                         None,
                         None,
-                        Some(&stroke_paragraphs),
+                        Some(&mut stroke_paragraphs),
+                        antialias,
+                        None,
+                    );
+                    shadows::render_text_inner_shadows(
+                        self,
+                        &shape,
+                        &mut stroke_paragraphs,
                         antialias,
                     );
-                    shadows::render_text_inner_shadows(self, &shape, &stroke_paragraphs, antialias);
                 }
 
-                shadows::render_text_inner_shadows(self, &shape, &paragraphs, antialias);
+                shadows::render_text_inner_shadows(self, &shape, &mut paragraphs, antialias);
             }
             _ => {
                 let surface_ids = SurfaceId::Strokes as u32
@@ -556,9 +541,9 @@ impl RenderState {
                     }
                 }
 
-                for stroke in shape.strokes().rev() {
+                for stroke in shape.visible_strokes().rev() {
                     shadows::render_stroke_drop_shadows(self, &shape, stroke, antialias);
-                    strokes::render(self, &shape, stroke, None, None, None, antialias);
+                    strokes::render(self, &shape, stroke, None, None, None, antialias, None);
                     shadows::render_stroke_inner_shadows(self, &shape, stroke, antialias);
                 }
 
@@ -566,7 +551,6 @@ impl RenderState {
                 shadows::render_fill_drop_shadows(self, &shape, antialias);
             }
         };
-
         self.apply_drawing_to_render_canvas(Some(&shape));
         let surface_ids = SurfaceId::Strokes as u32
             | SurfaceId::Fills as u32
@@ -594,7 +578,7 @@ impl RenderState {
 
     pub fn render_from_cache(
         &mut self,
-        shapes: &HashMap<Uuid, &mut Shape>,
+        shapes: &ShapesPool,
         modifiers: &HashMap<Uuid, Matrix>,
         structure: &HashMap<Uuid, Vec<StructureEntry>>,
     ) {
@@ -635,7 +619,7 @@ impl RenderState {
 
     pub fn start_render_loop(
         &mut self,
-        tree: &mut HashMap<Uuid, &mut Shape>,
+        tree: &ShapesPool,
         modifiers: &HashMap<Uuid, Matrix>,
         structure: &HashMap<Uuid, Vec<StructureEntry>>,
         scale_content: &HashMap<Uuid, f32>,
@@ -690,7 +674,7 @@ impl RenderState {
 
     pub fn process_animation_frame(
         &mut self,
-        tree: &mut HashMap<Uuid, &mut Shape>,
+        tree: &ShapesPool,
         modifiers: &HashMap<Uuid, Matrix>,
         structure: &HashMap<Uuid, Vec<StructureEntry>>,
         scale_content: &HashMap<Uuid, f32>,
@@ -719,7 +703,7 @@ impl RenderState {
     }
 
     #[inline]
-    pub fn render_shape_enter(&mut self, element: &mut Shape, mask: bool) {
+    pub fn render_shape_enter(&mut self, element: &Shape, mask: bool) {
         // Masked groups needs two rendering passes, the first one rendering
         // the content and the second one rendering the mask so we need to do
         // an extra save_layer to keep all the masked group separate from
@@ -765,7 +749,13 @@ impl RenderState {
     }
 
     #[inline]
-    pub fn render_shape_exit(&mut self, element: &mut Shape, visited_mask: bool) {
+    pub fn render_shape_exit(
+        &mut self,
+        element: &Shape,
+        visited_mask: bool,
+        modifiers: Option<&Matrix>,
+        scale_content: Option<&f32>,
+    ) {
         if visited_mask {
             // Because masked groups needs two rendering passes (first drawing
             // the content and then drawing the mask), we need to do an
@@ -806,8 +796,39 @@ impl RenderState {
         if let Type::Group(_) = element.shape_type {
             self.nested_fills.pop();
         }
-        self.surfaces.canvas(SurfaceId::Current).restore();
 
+        // Detect clipping and apply it properly
+        if let Type::Frame(_) = &element.shape_type {
+            if element.clip() {
+                let mut layer_paint = skia::Paint::default();
+                layer_paint.set_blend_mode(skia::BlendMode::DstIn);
+                let layer_rec = skia::canvas::SaveLayerRec::default().paint(&layer_paint);
+                self.surfaces
+                    .canvas(SurfaceId::Current)
+                    .save_layer(&layer_rec);
+
+                // We clip only the fills content
+                let mut element_fills: Cow<Shape> = Cow::Borrowed(element);
+                element_fills.to_mut().clear_strokes();
+                element_fills.to_mut().clear_shadows();
+                // We use the white color as the mask selection one
+                element_fills
+                    .to_mut()
+                    .set_fills([Fill::Solid(SolidColor(skia::Color::WHITE))].to_vec());
+                self.render_shape(&element_fills, modifiers, scale_content);
+
+                self.surfaces.canvas(SurfaceId::Current).restore();
+
+                // Now we paint the strokes - in clipped content strokes are drawn over the contained elements
+                let mut element_strokes: Cow<Shape> = Cow::Borrowed(element);
+                element_strokes.to_mut().clear_fills();
+                element_strokes.to_mut().clear_shadows();
+                self.render_shape(&element_strokes, modifiers, scale_content);
+
+                // TODO: drop shadows. With thos approach actually drop shadows for frames with clipped content are lost.
+            }
+        }
+        self.surfaces.canvas(SurfaceId::Current).restore();
         self.focus_mode.exit(&element.id);
     }
 
@@ -849,7 +870,7 @@ impl RenderState {
 
     pub fn render_shape_tree_partial_uncached(
         &mut self,
-        tree: &mut HashMap<Uuid, &mut Shape>,
+        tree: &ShapesPool,
         modifiers: &HashMap<Uuid, Matrix>,
         structure: &HashMap<Uuid, Vec<StructureEntry>>,
         scale_content: &HashMap<Uuid, f32>,
@@ -861,13 +882,13 @@ impl RenderState {
             let NodeRenderState {
                 id: node_id,
                 visited_children,
-                clip_bounds,
+                clip_bounds: _,
                 visited_mask,
                 mask,
             } = node_render_state;
 
             is_empty = false;
-            let element = tree.get_mut(&node_id).ok_or(
+            let element = tree.get(&node_id).ok_or(
                 "Error: Element with root_id {node_render_state.id} not found in the tree."
                     .to_string(),
             )?;
@@ -879,7 +900,12 @@ impl RenderState {
             }
 
             if visited_children {
-                self.render_shape_exit(element, visited_mask);
+                self.render_shape_exit(
+                    element,
+                    visited_mask,
+                    modifiers.get(&node_id),
+                    scale_content.get(&element.id),
+                );
                 continue;
             }
 
@@ -909,7 +935,6 @@ impl RenderState {
                     element,
                     modifiers.get(&element.id),
                     scale_content.get(&element.id),
-                    clip_bounds,
                 );
             } else if visited_children {
                 self.apply_drawing_to_render_canvas(Some(element));
@@ -929,7 +954,7 @@ impl RenderState {
                     node_render_state.get_children_clip_bounds(element, modifiers.get(&element.id));
 
                 let mut children_ids =
-                    modified_children_ids(element, structure.get(&element.id), false);
+                    element.modified_children_ids(structure.get(&element.id), false);
 
                 // Z-index ordering on Layouts
                 if element.has_layout() {
@@ -962,7 +987,7 @@ impl RenderState {
 
     pub fn render_shape_tree_partial(
         &mut self,
-        tree: &mut HashMap<Uuid, &mut Shape>,
+        tree: &ShapesPool,
         modifiers: &HashMap<Uuid, Matrix>,
         structure: &HashMap<Uuid, Vec<StructureEntry>>,
         scale_content: &HashMap<Uuid, f32>,
@@ -974,8 +999,11 @@ impl RenderState {
                 if self.surfaces.has_cached_tile_surface(current_tile) {
                     performance::begin_measure!("render_shape_tree::cached");
                     let tile_rect = self.get_current_tile_bounds();
-                    self.surfaces
-                        .draw_cached_tile_surface(current_tile, tile_rect);
+                    self.surfaces.draw_cached_tile_surface(
+                        current_tile,
+                        tile_rect,
+                        self.background_color,
+                    );
                     performance::end_measure!("render_shape_tree::cached");
 
                     if self.options.is_debug_visible() {
@@ -1012,6 +1040,7 @@ impl RenderState {
                 }
             }
 
+            // println!("clear current {:?}", self.current_tile);
             self.surfaces
                 .canvas(SurfaceId::Current)
                 .clear(self.background_color);
@@ -1019,7 +1048,7 @@ impl RenderState {
             let Some(root) = tree.get(&Uuid::nil()) else {
                 return Err(String::from("Root shape not found"));
             };
-            let root_ids = modified_children_ids(root, structure.get(&root.id), false);
+            let root_ids = root.modified_children_ids(structure.get(&root.id), false);
 
             // If we finish processing every node rendering is complete
             // let's check if there are more pending nodes
@@ -1100,7 +1129,7 @@ impl RenderState {
 
     pub fn rebuild_tiles_shallow(
         &mut self,
-        tree: &mut HashMap<Uuid, &mut Shape>,
+        tree: &ShapesPool,
         modifiers: &HashMap<Uuid, Matrix>,
         structure: &HashMap<Uuid, Vec<StructureEntry>>,
     ) {
@@ -1109,7 +1138,7 @@ impl RenderState {
         self.surfaces.remove_cached_tiles();
         let mut nodes = vec![Uuid::nil()];
         while let Some(shape_id) = nodes.pop() {
-            if let Some(shape) = tree.get_mut(&shape_id) {
+            if let Some(shape) = tree.get(&shape_id) {
                 let mut shape: Cow<Shape> = Cow::Borrowed(shape);
                 if shape_id != Uuid::nil() {
                     if let Some(modifier) = modifiers.get(&shape_id) {
@@ -1118,7 +1147,7 @@ impl RenderState {
                     self.update_tile_for(&shape);
                 } else {
                     // We only need to rebuild tiles from the first level.
-                    let children = modified_children_ids(&shape, structure.get(&shape.id), false);
+                    let children = shape.modified_children_ids(structure.get(&shape.id), false);
                     for child_id in children.iter() {
                         nodes.push(*child_id);
                     }
@@ -1130,7 +1159,7 @@ impl RenderState {
 
     pub fn rebuild_tiles(
         &mut self,
-        tree: &mut HashMap<Uuid, &mut Shape>,
+        tree: &ShapesPool,
         modifiers: &HashMap<Uuid, Matrix>,
         structure: &HashMap<Uuid, Vec<StructureEntry>>,
     ) {
@@ -1139,7 +1168,7 @@ impl RenderState {
         self.surfaces.remove_cached_tiles();
         let mut nodes = vec![Uuid::nil()];
         while let Some(shape_id) = nodes.pop() {
-            if let Some(shape) = tree.get_mut(&shape_id) {
+            if let Some(shape) = tree.get(&shape_id) {
                 let mut shape: Cow<Shape> = Cow::Borrowed(shape);
                 if shape_id != Uuid::nil() {
                     if let Some(modifier) = modifiers.get(&shape_id) {
@@ -1148,7 +1177,7 @@ impl RenderState {
                     self.update_tile_for(&shape);
                 }
 
-                let children = modified_children_ids(&shape, structure.get(&shape.id), false);
+                let children = shape.modified_children_ids(structure.get(&shape.id), false);
                 for child_id in children.iter() {
                     nodes.push(*child_id);
                 }
@@ -1157,13 +1186,9 @@ impl RenderState {
         performance::end_measure!("rebuild_tiles");
     }
 
-    pub fn rebuild_modifier_tiles(
-        &mut self,
-        tree: &mut HashMap<Uuid, &mut Shape>,
-        modifiers: &HashMap<Uuid, Matrix>,
-    ) {
+    pub fn rebuild_modifier_tiles(&mut self, tree: &ShapesPool, modifiers: &HashMap<Uuid, Matrix>) {
         for (uuid, matrix) in modifiers {
-            if let Some(shape) = tree.get_mut(uuid) {
+            if let Some(shape) = tree.get(uuid) {
                 let mut shape: Cow<Shape> = Cow::Borrowed(shape);
                 shape.to_mut().apply_transform(matrix);
                 self.update_tile_for(&shape);

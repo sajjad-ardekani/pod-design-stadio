@@ -19,7 +19,6 @@
    [app.common.geom.shapes.grid-layout :as gslg]
    [app.common.logic.libraries :as cll]
    [app.common.schema :as sm]
-   [app.common.text :as txt]
    [app.common.transit :as t]
    [app.common.types.component :as ctc]
    [app.common.types.container :as ctn]
@@ -28,6 +27,7 @@
    [app.common.types.shape-tree :as ctst]
    [app.common.types.shape.layout :as ctl]
    [app.common.types.shape.text :as types.text]
+   [app.common.types.text :as txt]
    [app.common.types.typography :as ctt]
    [app.common.uuid :as uuid]
    [app.config :as cf]
@@ -42,6 +42,7 @@
    [app.main.data.workspace.texts :as dwtxt]
    [app.main.data.workspace.undo :as dwu]
    [app.main.errors]
+   [app.main.refs :as refs]
    [app.main.repo :as rp]
    [app.main.router :as rt]
    [app.main.streams :as ms]
@@ -346,8 +347,8 @@
                  (gsh/translate-to-frame % (get objects parent-frame-id)))
 
             shapes          (mapv maybe-translate selected)
-            svg             (svg/generate-markup objects shapes)]
-        (wapi/write-to-clipboard svg)))))
+            svg-formatted   (svg/generate-formatted-markup objects shapes)]
+        (wapi/write-to-clipboard svg-formatted)))))
 
 (defn copy-selected-css
   []
@@ -673,47 +674,35 @@
 
 (defn paste-shapes
   [{in-viewport? :in-viewport :as pdata}]
-  (letfn [(translate-media [mdata media-idx attr-path]
-            (let [id   (-> (get-in mdata attr-path)
-                           (:id))
+  (letfn [(translate-media [mdata media-idx attr]
+            (let [id   (-> (get mdata attr) :id)
                   mobj (get media-idx id)]
               (if mobj
-                (if (empty? attr-path)
-                  (-> mdata
-                      (assoc :id (:id mobj))
-                      (assoc :path (:path mobj)))
-                  (update-in mdata attr-path (fn [value]
-                                               (-> value
-                                                   (assoc :id (:id mobj))
-                                                   (assoc :path (:path mobj))))))
-
+                (update mdata attr assoc :id (:id mobj))
                 mdata)))
 
           (add-obj? [chg]
             (= (:type chg) :add-obj))
 
+          (process-rchange-shape [obj media-idx]
+            (let [translate-fill-image   #(translate-media % media-idx :fill-image)
+                  translate-stroke-image #(translate-media % media-idx :stroke-image)
+                  translate-fills        #(mapv translate-fill-image %)
+                  translate-strokes      #(mapv translate-stroke-image %)
+                  process-text-node      #(d/update-when % :fills translate-fills)]
+
+              (-> obj
+                  (update :fills translate-fills)
+                  (update :strokes translate-strokes)
+                  (d/update-when :content #(txt/transform-nodes process-text-node %))
+                  (d/update-when :position-data #(mapv process-text-node %)))))
+
           ;; Analyze the rchange and replace staled media and
           ;; references to the new uploaded media-objects.
           (process-rchange [media-idx change]
-            (let [;; Texts can have different fills for pieces of the text
-                  tr-fill-xf    (map #(translate-media % media-idx [:fill-image]))
-                  tr-stroke-xf  (map #(translate-media % media-idx [:stroke-image]))]
-              (if (add-obj? change)
-                (update change :obj (fn [obj]
-                                      (-> obj
-                                          (update :fills #(into [] tr-fill-xf %))
-                                          (update :strokes #(into [] tr-stroke-xf %))
-                                          (d/update-when :metadata translate-media media-idx [])
-                                          (d/update-when :fill-image translate-media media-idx [])
-                                          (d/update-when :content
-                                                         (fn [content]
-                                                           (txt/xform-nodes tr-fill-xf content)))
-                                          (d/update-when :position-data
-                                                         (fn [position-data]
-                                                           (mapv (fn [pos-data]
-                                                                   (update pos-data :fills #(into [] tr-fill-xf %)))
-                                                                 position-data))))))
-                change)))
+            (if (add-obj? change)
+              (update change :obj process-rchange-shape media-idx)
+              change))
 
           (calculate-paste-position [state pobjects selected position]
             (let [page-objects         (dsh/lookup-page-objects state)
@@ -915,16 +904,17 @@
                               (ev/event {::ev/name "use-library-component"
                                          ::ev/origin origin
                                          :is-external-library external-lib?
-                                         :parent-shape-type parent-type})
+                                         :type (get shape :type)
+                                         :parent-type parent-type})
                               (if (cfh/has-layout? objects (:parent-id shape))
                                 (ev/event {::ev/name "layout-add-element"
                                            ::ev/origin origin
-                                           :element-type (get shape :type)
+                                           :type (get shape :type)
                                            :parent-type parent-type})
                                 (ev/event {::ev/name "create-shape"
                                            ::ev/origin origin
-                                           :shape-type (get shape :type)
-                                           :parent-shape-type parent-type})))))))
+                                           :type (get shape :type)
+                                           :parent-type parent-type})))))))
 
            (rx/of (dwu/start-undo-transaction undo-id)
                   (dch/commit-changes changes)
@@ -936,7 +926,7 @@
   (let [paragraphs (->> (str/lines text)
                         (map str/trim)
                         (mapv #(hash-map :type "paragraph"
-                                         :children [(merge txt/default-text-attrs {:text %})])))]
+                                         :children [(merge (txt/get-default-text-attrs) {:text %})])))]
     ;; if text is composed only by line breaks paragraphs is an empty list and should be nil
     (when (d/not-empty? paragraphs)
       {:type "root"
@@ -961,7 +951,8 @@
   (ptk/reify ::paste-html-text
     ptk/WatchEvent
     (watch [_ state  _]
-      (let [root    (dwtxt/create-root-from-html html)
+      (let [style   (deref refs/workspace-clipboard-style)
+            root    (dwtxt/create-root-from-html html style)
             content (tc/dom->cljs root)]
         (when (types.text/valid-content? content)
           (let [id     (uuid/next)

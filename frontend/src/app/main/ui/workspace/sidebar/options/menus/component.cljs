@@ -12,6 +12,7 @@
    [app.common.files.helpers :as cfh]
    [app.common.files.variant :as cfv]
    [app.common.types.component :as ctk]
+   [app.common.types.components-list :as ctkl]
    [app.common.types.file :as ctf]
    [app.common.types.variant :as ctv]
    [app.main.data.helpers :as dsh]
@@ -37,6 +38,7 @@
    [app.main.ui.hooks :as h]
    [app.main.ui.icons :as i]
    [app.main.ui.workspace.sidebar.assets.common :as cmm]
+   [app.main.ui.workspace.sidebar.options.menus.variants-help-modal]
    [app.util.debug :as dbg]
    [app.util.dom :as dom]
    [app.util.i18n :as i18n :refer [tr]]
@@ -291,8 +293,8 @@
   (->> (filter #(= (:name %) prop-name) prop-vals)
        first
        :value
-       (map (fn [val] {:id val
-                       :label (if (str/blank? val) (str "(" (tr "labels.empty") ")") val)}))))
+       (mapv (fn [val] {:id val
+                        :label (if (str/blank? val) (str "(" (tr "labels.empty") ")") val)}))))
 
 
 (mf/defc component-variant-main-instance*
@@ -352,7 +354,7 @@
 
     [:*
      [:div {:class (stl/css :variant-property-list)}
-      (for [[pos prop] (map vector (range) properties)]
+      (for [[pos prop] (map-indexed vector properties)]
         [:div {:key (str variant-id "-" pos) :class (stl/css :variant-property-container)}
          [:*
           [:div {:class (stl/css :variant-property-name-wrapper)}
@@ -365,7 +367,7 @@
             [:> combobox* {:id (str "variant-prop-" variant-id "-" pos)
                            :placeholder (if mixed-value? (tr "settings.multiple") "--")
                            :default-selected (if mixed-value? "" (:value prop))
-                           :options (clj->js (get-options (:name prop)))
+                           :options (get-options (:name prop))
                            :empty-to-end true
                            :max-length ctv/property-max-length
                            :on-change (partial update-property-value pos)}])]])]
@@ -438,7 +440,7 @@
           [:span {:class (stl/css :variant-property-name)}
            (:name prop)]
           [:> select* {:default-selected (:value prop)
-                       :options (clj->js (get-options (:name prop)))
+                       :options (get-options (:name prop))
                        :empty-to-end true
                        :on-change (partial switch-component pos)}]]])]
 
@@ -455,7 +457,7 @@
 
 (mf/defc component-swap-item
   {::mf/props :obj}
-  [{:keys [item loop shapes file-id root-shape container component-id is-search listing-thumbs]}]
+  [{:keys [item loop shapes file-id root-shape container component-id is-search listing-thumbs num-variants]}]
   (let [on-select
         (mf/use-fn
          (mf/deps shapes file-id item)
@@ -482,7 +484,10 @@
          :container container}])
      [:span  {:class (stl/css-case :component-name true
                                    :selected (= (:id item) component-id))}
-      (if is-search (:full-name item) (:name item))]]))
+      (if is-search (:full-name item) (:name item))]
+     (when (ctk/is-variant? item)
+       [:span {:class (stl/css-case :variant-mark-cell listing-thumbs :variant-icon true)
+               :title (tr "workspace.assets.components.num-variants" num-variants)} i/variant])]))
 
 (mf/defc component-group-item
   {::mf/props :obj}
@@ -564,14 +569,23 @@
                               (:file-id filters)
                               current-file-id)
 
-        current-library-name  (if (= current-library-id current-file-id)
-                                (str/upper (tr "workspace.assets.local-library"))
-                                (dm/get-in libraries [current-library-id :name]))
+        current-lib-name    (if (= current-library-id current-file-id)
+                              (str/upper (tr "workspace.assets.local-library"))
+                              (dm/get-in libraries [current-library-id :name]))
+
+        current-lib-data    (get-in libraries [current-library-id :data])
+
 
         components          (->> (get-in libraries [current-library-id :data :components])
                                  vals
                                  (remove #(true? (:deleted %)))
+                                 (remove #(cfv/is-secondary-variant? % current-lib-data))
                                  (map #(assoc % :full-name (cfh/merge-path-item-with-dot (:path %) (:name %)))))
+
+        count-variants      (fn [component]
+                              (->> (ctkl/components-seq current-lib-data)
+                                   (filterv #(= (:variant-id component) (:variant-id %)))
+                                   count))
 
         get-subgroups       (fn [path]
                               (let [split-path (cfh/split-path path)]
@@ -665,7 +679,7 @@
 
       [:div  {:class (stl/css :swap-wrapper)}
        [:div {:class (stl/css :library-name-wrapper)}
-        [:div {:class (stl/css :library-name)} current-library-name]
+        [:div {:class (stl/css :library-name)} current-lib-name]
 
         [:div {:class (stl/css :listing-options-wrapper)}
          [:& radio-buttons {:class (stl/css :listing-options)
@@ -716,7 +730,8 @@
                                        :container container
                                        :component-id component-id
                                        :is-search is-search?
-                                       :listing-thumbs (:listing-thumbs? filters)}])
+                                       :listing-thumbs (:listing-thumbs? filters)
+                                       :num-variants (count-variants item)}])
 
             [:& component-group-item {:item item
                                       :key (:name item)
@@ -763,6 +778,9 @@
         copies          (filter ctk/in-component-copy? shapes)
         can-swap?       (boolean (seq copies))
 
+        all-main?       (every? ctk/main-instance? shapes)
+        any-variant?    (some ctk/is-variant? shapes)
+
         ;; For when it's only one shape
         shape           (first shapes)
         id              (:id shape)
@@ -775,6 +793,7 @@
         data            (dm/get-in libraries [(:component-file shape) :data])
         variants?       (features/use-feature "variants/v1")
         is-variant?     (when variants? (ctk/is-variant? component))
+
         main-instance?  (ctk/main-instance? shape)
 
         components      (mapv #(ctf/resolve-component %
@@ -797,6 +816,12 @@
         (mf/use-fn
          #(swap! state* assoc :menu-open false))
 
+        on-click-variant-title-help
+        (mf/use-fn
+         (fn []
+           (modal/show! {:type :variants-help-modal})
+           (modal/allow-click-outside!)))
+
         on-component-back
         (mf/use-fn
          #(st/emit! ::dwsp/interrupt))
@@ -808,6 +833,9 @@
            (let [search-id "swap-component-search-filter"]
              (when can-swap? (st/emit! (dwsp/open-specialized-panel :component-swap)))
              (tm/schedule-on-idle #(dom/focus! (dom/get-element search-id))))))
+
+        on-combine-as-variants
+        #(st/emit! (dwv/combine-as-variants))
 
         ;; NOTE: function needed for force rerender from the bottom
         ;; components. This is because `component-annotation`
@@ -837,13 +865,21 @@
                          :collapsed    (not open?)
                          :on-collapsed toggle-content
                          :title        (tr "workspace.options.component")
-                         :class        (stl/css :title-spacing-component)}
+                         :class        (stl/css :title-spacing-component)
+                         :title-class (stl/css-case :title-bar-variant is-variant?)}
            [:span {:class (stl/css :copy-text)}
             (if main-instance?
               (if is-variant?
                 (tr "workspace.options.component.variant")
                 (tr "workspace.options.component.main"))
-              (tr "workspace.options.component.copy"))]])]
+              (tr "workspace.options.component.copy"))]
+
+           (when is-variant?
+             [:div {:class (stl/css :variants-help-modal-button)}
+              [:> icon-button* {:variant "ghost"
+                                :aria-label (tr "workspace.options.component.variants-help-modal.title")
+                                :on-click on-click-variant-title-help
+                                :icon "help"}]])])]
 
        (when open?
          [:div {:class (stl/css :element-content)}
@@ -908,8 +944,21 @@
                                                   :shapes shapes
                                                   :data data}])
 
+          (when (and multi all-main? (not any-variant?))
+            [:button {:class (stl/css :combine-variant-button)
+                      :on-click on-combine-as-variants}
+             [:span (tr "workspace.shape.menu.combine-as-variants")]])
+
           (when (dbg/enabled? :display-touched)
             [:div ":touched " (str (:touched shape))])])])))
+
+
+(defn- move-empty-items-to-end
+  "Creates a new vector with the empty items at the end"
+  [v]
+  (-> []
+      (into (remove empty?) v)
+      (into (filter empty?) v)))
 
 
 (mf/defc variant-menu*
@@ -946,7 +995,7 @@
         menu-open?         (deref menu-open*)
 
         menu-entries       [{:title (tr "workspace.shape.menu.add-variant-property")
-                             :action #(st/emit! (dwv/add-new-property variant-id))}
+                             :action #(st/emit! (dwv/add-new-property variant-id {:property-value "Value 1"}))}
                             {:title (tr "workspace.shape.menu.add-variant")
                              :action #(st/emit! (dwv/add-new-variant (:id shape)))}]
 
@@ -963,15 +1012,22 @@
          (mf/deps menu-open*)
          #(reset! menu-open* false))
 
+        on-click-variant-title-help
+        (mf/use-fn
+         (fn []
+           (modal/show! {:type :variants-help-modal})
+           (modal/allow-click-outside!)))
+
         update-property-name
         (mf/use-fn
          (mf/deps variant-id)
          (fn [event]
-           (let [new-name (dom/get-target-val event)
-                 pos (-> (dom/get-current-target event)
-                         (dom/get-data "position")
-                         int)]
-             (st/emit! (dwv/update-property-name variant-id pos new-name)))))
+           (let [value (dom/get-target-val event)
+                 pos   (-> (dom/get-current-target event)
+                           (dom/get-data "position")
+                           int)]
+             (when (seq value)
+               (st/emit! (dwv/update-property-name variant-id pos value))))))
 
         remove-property
         (mf/use-fn
@@ -1001,8 +1057,15 @@
         [:& title-bar {:collapsable  false
                        :title        (tr "workspace.options.component")
                        :class        (stl/css :title-spacing-component)}
+
          [:span {:class (stl/css :copy-text)}
-          (tr "workspace.options.component.main")]]]
+          (tr "workspace.options.component.main")]
+
+         [:div {:class (stl/css :variants-help-modal-button)}
+          [:> icon-button* {:variant "ghost"
+                            :aria-label (tr "workspace.options.component.variants-help-modal.title")
+                            :on-click on-click-variant-title-help
+                            :icon "help"}]]]]
 
        [:div {:class (stl/css :element-content)}
         [:div {:class (stl/css-case :component-wrapper true
@@ -1036,8 +1099,12 @@
 
         (when-not multi?
           [:div {:class (stl/css :variant-property-list)}
-           (for [[pos property] (map vector (range) properties)]
-             (let [meta (str/join ", " (:value property))]
+           (for [[pos property] (map-indexed vector properties)]
+             (let [last-prop? (<= (count properties) 1)
+                   meta       (->> (:value property)
+                                   (move-empty-items-to-end)
+                                   (replace {"" "--"})
+                                   (str/join ", "))]
                [:div {:key (str (:id shape) pos)
                       :class (stl/css :variant-property-row)}
                 [:> input-with-meta* {:value (:name property)
@@ -1046,11 +1113,13 @@
                                       :data-position pos
                                       :on-blur update-property-name}]
                 [:> icon-button* {:variant "ghost"
-                                  :aria-label (tr "workspace.shape.menu.remove-variant-property")
+                                  :aria-label (if last-prop?
+                                                (tr "workspace.shape.menu.remove-variant-property.last-property")
+                                                (tr "workspace.shape.menu.remove-variant-property"))
                                   :on-click remove-property
                                   :data-position pos
                                   :icon "remove"
-                                  :disabled (<= (count properties) 1)}]]))])
+                                  :disabled last-prop?}]]))])
 
         (if malformed?
           [:div {:class (stl/css :variant-warning-wrapper)}

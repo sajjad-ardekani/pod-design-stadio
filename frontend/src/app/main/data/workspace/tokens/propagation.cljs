@@ -8,6 +8,7 @@
   (:require
    [app.common.files.helpers :as cfh]
    [app.common.logging :as l]
+   [app.common.time :as ct]
    [app.common.types.token :as ctt]
    [app.common.types.tokens-lib :as ctob]
    [app.main.data.helpers :as dsh]
@@ -16,7 +17,6 @@
    [app.main.data.workspace.thumbnails :as dwt]
    [app.main.data.workspace.tokens.application :as dwta]
    [app.main.data.workspace.undo :as dwu]
-   [app.util.time :as dt]
    [beicon.v2.core :as rx]
    [clojure.data :as data]
    [clojure.set :as set]
@@ -34,6 +34,9 @@
    ctt/opacity-keys dwta/update-opacity
    #{:line-height} dwta/update-line-height
    #{:font-size} dwta/update-font-size
+   #{:letter-spacing} dwta/update-letter-spacing
+   #{:font-family} dwta/update-font-family
+   #{:text-case} dwta/update-text-case
    #{:x :y} dwta/update-shape-position
    #{:p1 :p2 :p3 :p4} dwta/update-layout-padding
    #{:m1 :m2 :m3 :m4} dwta/update-layout-item-margin
@@ -140,7 +143,7 @@
   (let [file-id         (get state :current-file-id)
         current-page-id (get state :current-page-id)
         fdata           (dsh/lookup-file-data state file-id)
-        tpoint          (dt/tpoint-ms)]
+        tpoint          (ct/tpoint-ms)]
 
     (l/inf :status "START" :hint "propagate-tokens")
     (->> (rx/concat

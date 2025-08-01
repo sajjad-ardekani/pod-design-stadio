@@ -8,13 +8,16 @@
   (:require
    [app.binfile.common :as bfc]
    [app.common.exceptions :as ex]
+   [app.common.files.migrations :as fmg]
    [app.common.logging :as l]
    [app.common.schema :as sm]
+   [app.common.time :as ct]
    [app.common.uuid :as uuid]
    [app.config :as cf]
    [app.db :as db]
    [app.db.sql :as-alias sql]
    [app.features.fdata :as feat.fdata]
+   [app.features.file-migrations :refer [reset-migrations!]]
    [app.main :as-alias main]
    [app.msgbus :as mbus]
    [app.rpc :as-alias rpc]
@@ -24,12 +27,18 @@
    [app.storage :as sto]
    [app.util.blob :as blob]
    [app.util.services :as sv]
-   [app.util.time :as dt]
    [cuerdas.core :as str]))
+
+(defn decode-row
+  [{:keys [migrations] :as row}]
+  (when row
+    (cond-> row
+      (some? migrations)
+      (assoc :migrations (db/decode-pgarray migrations)))))
 
 (def sql:get-file-snapshots
   "WITH changes AS (
-      SELECT id, label, revn, created_at, created_by, profile_id
+      SELECT id, label, revn, created_at, created_by, profile_id, locked_by
         FROM file_change
        WHERE file_id = ?
          AND data IS NOT NULL
@@ -60,8 +69,8 @@
 
 (defn- generate-snapshot-label
   []
-  (let [ts (-> (dt/now)
-               (dt/format-instant)
+  (let [ts (-> (ct/now)
+               (ct/format-inst)
                (str/replace #"[T:\.]" "-")
                (str/rtrim "Z"))]
     (str "snapshot-" ts)))
@@ -74,18 +83,15 @@
   (assert (#{:system :user :admin} created-by)
           "expected valid keyword for created-by")
 
-  (let [conn
-        (db/get-connection cfg)
-
-        created-by
+  (let [created-by
         (name created-by)
 
         deleted-at
         (cond
           (= deleted-at :default)
-          (dt/plus (dt/now) (cf/get-deletion-delay))
+          (ct/plus (ct/now) (cf/get-deletion-delay))
 
-          (dt/instant? deleted-at)
+          (ct/inst? deleted-at)
           deleted-at
 
           :else
@@ -101,12 +107,15 @@
         (blob/encode (:data file))
 
         features
-        (db/encode-pgarray (:features file) conn "text")]
+        (into-array (:features file))
 
-    (l/debug :hint "creating file snapshot"
-             :file-id (str (:id file))
-             :id (str snapshot-id)
-             :label label)
+        migrations
+        (into-array (:migrations file))]
+
+    (l/dbg :hint "creating file snapshot"
+           :file-id (str (:id file))
+           :id (str snapshot-id)
+           :label label)
 
     (db/insert! cfg :file-change
                 {:id snapshot-id
@@ -114,6 +123,7 @@
                  :data data
                  :version (:version file)
                  :features features
+                 :migrations migrations
                  :profile-id profile-id
                  :file-id (:id file)
                  :label label
@@ -159,7 +169,17 @@
                                    {:file-id file-id
                                     :id snapshot-id}
                                    {::db/for-share true})
-                          (feat.fdata/resolve-file-data cfg))]
+                          (feat.fdata/resolve-file-data cfg)
+                          (decode-row))
+
+        ;; If snapshot has tracked applied migrations, we reuse them,
+        ;; if not we take a safest set of migrations as starting
+        ;; point. This is because, at the time of implementing
+        ;; snapshots, migrations were not taken into account so we
+        ;; need to make this backward compatible in some way.
+        file     (assoc file :migrations
+                        (or (:migrations snapshot)
+                            (fmg/generate-migrations-from-version 67)))]
 
     (when-not snapshot
       (ex/raise :type :not-found
@@ -180,11 +200,15 @@
            :label (:label snapshot)
            :snapshot-id (str (:id snapshot)))
 
-    ;; If the file was already offloaded, on restring the snapshot
-    ;; we are going to replace the file data, so we need to touch
-    ;; the old referenced storage object and avoid possible leaks
+    ;; If the file was already offloaded, on restoring the snapshot we
+    ;; are going to replace the file data, so we need to touch the old
+    ;; referenced storage object and avoid possible leaks
     (when (feat.fdata/offloaded? file)
       (sto/touch-object! storage (:data-ref-id file)))
+
+    ;; In the same way, on reseting the file data, we need to restore
+    ;; the applied migrations on the moment of taking the snapshot
+    (reset-migrations! conn file)
 
     (db/update! conn :file
                 {:data (:data snapshot)
@@ -253,14 +277,14 @@
                    :deleted-at nil}
                   {:id snapshot-id}
                   {::db/return-keys true})
-      (dissoc :data :features)))
+      (dissoc :data :features :migrations)))
 
 (defn- get-snapshot
   "Get a minimal snapshot from database and lock for update"
   [conn id]
   (db/get conn :file-change
           {:id id}
-          {::sql/columns [:id :file-id :created-by :deleted-at]
+          {::sql/columns [:id :file-id :created-by :deleted-at :profile-id :locked-by]
            ::db/for-update true}))
 
 (sv/defmethod ::update-file-snapshot
@@ -280,7 +304,7 @@
 (defn- delete-file-snapshot!
   [conn snapshot-id]
   (db/update! conn :file-change
-              {:deleted-at (dt/now)}
+              {:deleted-at (ct/now)}
               {:id snapshot-id}
               {::db/return-keys false})
   nil)
@@ -300,4 +324,111 @@
                               :snapshot-id id
                               :profile-id profile-id))
 
+                  ;; Check if version is locked by someone else
+                  (when (and (:locked-by snapshot)
+                             (not= (:locked-by snapshot) profile-id))
+                    (ex/raise :type :validation
+                              :code :snapshot-is-locked
+                              :hint "Cannot delete a locked version"
+                              :snapshot-id id
+                              :profile-id profile-id
+                              :locked-by (:locked-by snapshot)))
+
                   (delete-file-snapshot! conn id)))))
+
+;;; Lock/unlock version endpoints
+
+(def ^:private schema:lock-file-snapshot
+  [:map {:title "lock-file-snapshot"}
+   [:id ::sm/uuid]])
+
+(defn- lock-file-snapshot!
+  [conn snapshot-id profile-id]
+  (db/update! conn :file-change
+              {:locked-by profile-id}
+              {:id snapshot-id}
+              {::db/return-keys false})
+  nil)
+
+(sv/defmethod ::lock-file-snapshot
+  {::doc/added "1.20"
+   ::sm/params schema:lock-file-snapshot}
+  [cfg {:keys [::rpc/profile-id id]}]
+  (db/tx-run! cfg
+              (fn [{:keys [::db/conn]}]
+                (let [snapshot (get-snapshot conn id)]
+                  (files/check-edition-permissions! conn profile-id (:file-id snapshot))
+
+                  (when (not= (:created-by snapshot) "user")
+                    (ex/raise :type :validation
+                              :code :system-snapshots-cant-be-locked
+                              :hint "Only user-created versions can be locked"
+                              :snapshot-id id
+                              :profile-id profile-id))
+
+                  ;; Only the creator can lock their own version
+                  (when (not= (:profile-id snapshot) profile-id)
+                    (ex/raise :type :validation
+                              :code :only-creator-can-lock
+                              :hint "Only the version creator can lock it"
+                              :snapshot-id id
+                              :profile-id profile-id
+                              :creator-id (:profile-id snapshot)))
+
+                  ;; Check if already locked
+                  (when (:locked-by snapshot)
+                    (ex/raise :type :validation
+                              :code :snapshot-already-locked
+                              :hint "Version is already locked"
+                              :snapshot-id id
+                              :profile-id profile-id
+                              :locked-by (:locked-by snapshot)))
+
+                  (lock-file-snapshot! conn id profile-id)))))
+
+(def ^:private schema:unlock-file-snapshot
+  [:map {:title "unlock-file-snapshot"}
+   [:id ::sm/uuid]])
+
+(defn- unlock-file-snapshot!
+  [conn snapshot-id]
+  (db/update! conn :file-change
+              {:locked-by nil}
+              {:id snapshot-id}
+              {::db/return-keys false})
+  nil)
+
+(sv/defmethod ::unlock-file-snapshot
+  {::doc/added "1.20"
+   ::sm/params schema:unlock-file-snapshot}
+  [cfg {:keys [::rpc/profile-id id]}]
+  (db/tx-run! cfg
+              (fn [{:keys [::db/conn]}]
+                (let [snapshot (get-snapshot conn id)]
+                  (files/check-edition-permissions! conn profile-id (:file-id snapshot))
+
+                  (when (not= (:created-by snapshot) "user")
+                    (ex/raise :type :validation
+                              :code :system-snapshots-cant-be-unlocked
+                              :hint "Only user-created versions can be unlocked"
+                              :snapshot-id id
+                              :profile-id profile-id))
+
+                  ;; Only the creator can unlock their own version
+                  (when (not= (:profile-id snapshot) profile-id)
+                    (ex/raise :type :validation
+                              :code :only-creator-can-unlock
+                              :hint "Only the version creator can unlock it"
+                              :snapshot-id id
+                              :profile-id profile-id
+                              :creator-id (:profile-id snapshot)))
+
+                  ;; Check if not locked
+                  (when (not (:locked-by snapshot))
+                    (ex/raise :type :validation
+                              :code :snapshot-not-locked
+                              :hint "Version is not locked"
+                              :snapshot-id id
+                              :profile-id profile-id))
+
+                  (unlock-file-snapshot! conn id)))))

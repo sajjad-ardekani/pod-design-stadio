@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 use crate::math::{self as math, Bounds, Matrix, Point, Vector, VectorExt};
 use crate::shapes::{
-    modified_children_ids, AlignContent, AlignItems, AlignSelf, FlexData, JustifyContent,
-    LayoutData, LayoutItem, Modifier, Shape, StructureEntry,
+    AlignContent, AlignItems, AlignSelf, FlexData, JustifyContent, LayoutData, LayoutItem,
+    Modifier, Shape, StructureEntry,
 };
+use crate::state::ShapesPool;
 use crate::uuid::Uuid;
 
 use std::collections::{HashMap, VecDeque};
@@ -178,13 +179,13 @@ fn initialize_tracks(
     layout_bounds: &Bounds,
     layout_axis: &LayoutAxis,
     flex_data: &FlexData,
-    shapes: &HashMap<Uuid, &mut Shape>,
+    shapes: &ShapesPool,
     bounds: &HashMap<Uuid, Bounds>,
     structure: &HashMap<Uuid, Vec<StructureEntry>>,
 ) -> Vec<TrackData> {
     let mut tracks = Vec::<TrackData>::new();
     let mut current_track = TrackData::default();
-    let mut children = modified_children_ids(shape, structure.get(&shape.id), true);
+    let mut children = shape.modified_children_ids(structure.get(&shape.id), true);
     let mut first = true;
 
     if flex_data.is_reverse() {
@@ -430,7 +431,7 @@ fn calculate_track_data(
     layout_data: &LayoutData,
     flex_data: &FlexData,
     layout_bounds: &Bounds,
-    shapes: &HashMap<Uuid, &mut Shape>,
+    shapes: &ShapesPool,
     bounds: &HashMap<Uuid, Bounds>,
     structure: &HashMap<Uuid, Vec<StructureEntry>>,
 ) -> Vec<TrackData> {
@@ -570,7 +571,7 @@ pub fn reflow_flex_layout(
     shape: &Shape,
     layout_data: &LayoutData,
     flex_data: &FlexData,
-    shapes: &HashMap<Uuid, &mut Shape>,
+    shapes: &ShapesPool,
     bounds: &mut HashMap<Uuid, Bounds>,
     structure: &HashMap<Uuid, Vec<StructureEntry>>,
 ) -> VecDeque<Modifier> {

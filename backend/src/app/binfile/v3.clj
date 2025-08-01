@@ -12,7 +12,6 @@
    [app.binfile.common :as bfc]
    [app.binfile.migrations :as bfm]
    [app.common.data :as d]
-   [app.common.data.macros :as dm]
    [app.common.exceptions :as ex]
    [app.common.features :as cfeat]
    [app.common.files.migrations :as-alias fmg]
@@ -21,6 +20,7 @@
    [app.common.media :as cmedia]
    [app.common.schema :as sm]
    [app.common.thumbnails :as cth]
+   [app.common.time :as ct]
    [app.common.types.color :as ctcl]
    [app.common.types.component :as ctc]
    [app.common.types.file :as ctf]
@@ -36,7 +36,6 @@
    [app.storage :as sto]
    [app.storage.impl :as sto.impl]
    [app.util.events :as events]
-   [app.util.time :as dt]
    [clojure.java.io :as jio]
    [cuerdas.core :as str]
    [datoteka.fs :as fs]
@@ -54,7 +53,7 @@
   [:map {:title "Manifest"}
    [:version ::sm/int]
    [:type :string]
-
+   [:referer {:optional true} :string]
    [:generated-by {:optional true} :string]
 
    [:files
@@ -93,7 +92,7 @@
 
 (defn- default-now
   [o]
-  (or o (dt/now)))
+  (or o (ct/now)))
 
 ;; --- ENCODERS
 
@@ -285,10 +284,12 @@
                  (assoc :options (:options data))
 
                  :always
-                 (dissoc :data)
+                 (dissoc :data))
 
+          file (cond-> file
                  :always
                  (encode-file))
+
           path (str "files/" file-id ".json")]
       (write-entry! output path file))
 
@@ -373,6 +374,7 @@
           params {:type "penpot/export-files"
                   :version 1
                   :generated-by (str "penpot/" (:full cf/version))
+                  :refer "penpot"
                   :files (vec (vals files))
                   :relations rels}]
       (write-entry! output "manifest.json" params))))
@@ -544,15 +546,18 @@
     (json/read reader)))
 
 (defn- read-file
-  [{:keys [::bfc/input ::file-id]}]
+  [{:keys [::bfc/input ::bfc/timestamp]} file-id]
   (let [path  (str "files/" file-id ".json")
         entry (get-zip-entry input path)]
     (-> (read-entry input entry)
         (decode-file)
+        (update :revn d/nilv 1)
+        (update :created-at d/nilv timestamp)
+        (update :modified-at d/nilv timestamp)
         (validate-file))))
 
 (defn- read-file-plugin-data
-  [{:keys [::bfc/input ::file-id]}]
+  [{:keys [::bfc/input]} file-id]
   (let [path  (str "files/" file-id "/plugin-data.json")
         entry (get-zip-entry* input path)]
     (some->> entry
@@ -561,7 +566,7 @@
              (validate-plugin-data))))
 
 (defn- read-file-media
-  [{:keys [::bfc/input ::file-id ::entries]}]
+  [{:keys [::bfc/input ::entries]} file-id]
   (->> (keep (match-media-entry-fn file-id) entries)
        (reduce (fn [result {:keys [id entry]}]
                  (let [object (->> (read-entry input entry)
@@ -581,7 +586,7 @@
        (not-empty)))
 
 (defn- read-file-colors
-  [{:keys [::bfc/input ::file-id ::entries]}]
+  [{:keys [::bfc/input ::entries]} file-id]
   (->> (keep (match-color-entry-fn file-id) entries)
        (reduce (fn [result {:keys [id entry]}]
                  (let [object (->> (read-entry input entry)
@@ -594,7 +599,7 @@
        (not-empty)))
 
 (defn- read-file-components
-  [{:keys [::bfc/input ::file-id ::entries]}]
+  [{:keys [::bfc/input ::entries]} file-id]
   (let [clean-component-post-decode
         (fn [component]
           (d/update-when component :objects
@@ -625,7 +630,7 @@
          (not-empty))))
 
 (defn- read-file-typographies
-  [{:keys [::bfc/input ::file-id ::entries]}]
+  [{:keys [::bfc/input ::entries]} file-id]
   (->> (keep (match-typography-entry-fn file-id) entries)
        (reduce (fn [result {:keys [id entry]}]
                  (let [object (->> (read-entry input entry)
@@ -638,14 +643,14 @@
        (not-empty)))
 
 (defn- read-file-tokens-lib
-  [{:keys [::bfc/input ::file-id ::entries]}]
+  [{:keys [::bfc/input ::entries]} file-id]
   (when-let [entry (d/seek (match-tokens-lib-entry-fn file-id) entries)]
     (->> (read-plain-entry input entry)
          (decode-tokens-lib)
          (validate-tokens-lib))))
 
 (defn- read-file-shapes
-  [{:keys [::bfc/input ::file-id ::page-id ::entries] :as cfg}]
+  [{:keys [::bfc/input ::entries] :as cfg} file-id page-id]
   (->> (keep (match-shape-entry-fn file-id page-id) entries)
        (reduce (fn [result {:keys [id entry]}]
                  (let [object (->> (read-entry input entry)
@@ -659,15 +664,14 @@
        (not-empty)))
 
 (defn- read-file-pages
-  [{:keys [::bfc/input ::file-id ::entries] :as cfg}]
+  [{:keys [::bfc/input ::entries] :as cfg} file-id]
   (->> (keep (match-page-entry-fn file-id) entries)
        (keep (fn [{:keys [id entry]}]
                (let [page (->> (read-entry input entry)
                                (decode-page))
                      page (dissoc page :options)]
                  (when (= id (:id page))
-                   (let [objects (-> (assoc cfg ::page-id id)
-                                     (read-file-shapes))]
+                   (let [objects (read-file-shapes cfg file-id id)]
                      (assoc page :objects objects))))))
        (sort-by :index)
        (reduce (fn [result {:keys [id] :as page}]
@@ -675,7 +679,7 @@
                (d/ordered-map))))
 
 (defn- read-file-thumbnails
-  [{:keys [::bfc/input ::file-id ::entries] :as cfg}]
+  [{:keys [::bfc/input ::entries] :as cfg} file-id]
   (->> (keep (match-thumbnail-entry-fn file-id) entries)
        (reduce (fn [result {:keys [page-id frame-id tag entry]}]
                  (let [object (->> (read-entry input entry)
@@ -690,13 +694,13 @@
        (not-empty)))
 
 (defn- read-file-data
-  [cfg]
-  (let [colors       (read-file-colors cfg)
-        typographies (read-file-typographies cfg)
-        tokens-lib   (read-file-tokens-lib cfg)
-        components   (read-file-components cfg)
-        plugin-data  (read-file-plugin-data cfg)
-        pages        (read-file-pages cfg)]
+  [cfg file-id]
+  (let [colors       (read-file-colors cfg file-id)
+        typographies (read-file-typographies cfg file-id)
+        tokens-lib   (read-file-tokens-lib cfg file-id)
+        components   (read-file-components cfg file-id)
+        plugin-data  (read-file-plugin-data cfg file-id)
+        pages        (read-file-pages cfg file-id)]
     {:pages (-> pages keys vec)
      :pages-index (into {} pages)
      :colors colors
@@ -706,11 +710,11 @@
      :plugin-data plugin-data}))
 
 (defn- import-file
-  [{:keys [::bfc/project-id ::file-id ::file-name] :as cfg}]
+  [{:keys [::bfc/project-id] :as cfg} {file-id :id file-name :name}]
   (let [file-id'   (bfc/lookup-index file-id)
-        file       (read-file cfg)
-        media      (read-file-media cfg)
-        thumbnails (read-file-thumbnails cfg)]
+        file       (read-file cfg file-id)
+        media      (read-file-media cfg file-id)
+        thumbnails (read-file-thumbnails cfg file-id)]
 
     (l/dbg :hint "processing file"
            :id (str file-id')
@@ -740,7 +744,7 @@
       (vswap! bfc/*state* update :index bfc/update-index (map :media-id thumbnails))
       (vswap! bfc/*state* update :thumbnails into thumbnails))
 
-    (let [data (-> (read-file-data cfg)
+    (let [data (-> (read-file-data cfg file-id)
                    (d/without-nils)
                    (assoc :id file-id')
                    (cond-> (:options file)
@@ -757,7 +761,7 @@
           file  (ctf/check-file file)]
 
       (bfm/register-pending-migrations! cfg file)
-      (bfc/save-file! cfg file ::db/return-keys false)
+      (bfc/save-file! cfg file)
 
       file-id')))
 
@@ -853,7 +857,8 @@
              :file-id (str (:file-id params))
              ::l/sync? true)
 
-      (db/insert! conn :file-media-object params))))
+      (db/insert! conn :file-media-object params
+                  ::db/on-conflict-do-nothing? (::bfc/overwrite cfg)))))
 
 (defn- import-file-thumbnails
   [{:keys [::db/conn] :as cfg}]
@@ -873,22 +878,77 @@
              :media-id (str media-id)
              ::l/sync? true)
 
-      (db/insert! conn :file-tagged-object-thumbnail params))))
+      (db/insert! conn :file-tagged-object-thumbnail params
+                  {::db/on-conflict-do-nothing? true}))))
+
+(defn- import-files*
+  [{:keys [::manifest] :as cfg}]
+  (bfc/disable-database-timeouts! cfg)
+
+  (vswap! bfc/*state* update :index bfc/update-index (:files manifest) :id)
+
+  (let [files  (get manifest :files)
+        result (reduce (fn [result {:keys [id] :as file}]
+                         (let [name' (get file :name)
+                               name' (if (map? name)
+                                       (get name id)
+                                       name')
+                               file (assoc file :name name')]
+                           (conj result (import-file cfg file))))
+                       []
+                       files)]
+
+    (import-file-relations cfg)
+    (import-storage-objects cfg)
+    (import-file-media cfg)
+    (import-file-thumbnails cfg)
+
+    (bfm/apply-pending-migrations! cfg)
+
+    result))
+
+(defn- import-file-and-overwrite*
+  [{:keys [::manifest ::bfc/file-id] :as cfg}]
+
+  (when (not= 1 (count (:files manifest)))
+    (ex/raise :type :validation
+              :code :invalid-condition
+              :hint "unable to perform in-place update with binfile containing more than 1 file"
+              :manifest manifest))
+
+  (bfc/disable-database-timeouts! cfg)
+
+  (let [ref-file (bfc/get-minimal-file cfg file-id ::db/for-update true)
+        file     (first (get manifest :files))
+        cfg      (assoc cfg ::bfc/overwrite true)]
+
+    (vswap! bfc/*state* update :index assoc (:id file) file-id)
+
+    (binding [bfc/*options* cfg
+              bfc/*reference-file* ref-file]
+
+      (import-file cfg file)
+      (import-storage-objects cfg)
+      (import-file-media cfg)
+
+      (bfc/invalidate-thumbnails cfg file-id)
+      (bfm/apply-pending-migrations! cfg)
+
+      [file-id])))
 
 (defn- import-files
-  [{:keys [::bfc/timestamp ::bfc/input ::bfc/name] :or {timestamp (dt/now)} :as cfg}]
+  [{:keys [::bfc/timestamp ::bfc/input] :or {timestamp (ct/now)} :as cfg}]
 
-  (dm/assert!
-   "expected zip file"
-   (instance? ZipFile input))
-
-  (dm/assert!
-   "expected valid instant"
-   (dt/instant? timestamp))
+  (assert (instance? ZipFile input) "expected zip file")
+  (assert (ct/inst? timestamp) "expected valid instant")
 
   (let [manifest (-> (read-manifest input)
                      (validate-manifest))
-        entries  (read-zip-entries input)]
+        entries  (read-zip-entries input)
+        cfg      (-> cfg
+                     (assoc ::entries entries)
+                     (assoc ::manifest manifest)
+                     (assoc ::bfc/timestamp timestamp))]
 
     (when-not (= "penpot/export-files" (:type manifest))
       (ex/raise :type :validation
@@ -911,35 +971,10 @@
 
     (events/tap :progress {:section :manifest})
 
-    (let [index (bfc/update-index (map :id (:files manifest)))
-          state {:media [] :index index}
-          cfg   (-> cfg
-                    (assoc ::entries entries)
-                    (assoc ::manifest manifest)
-                    (assoc ::bfc/timestamp timestamp))]
-
-      (binding [bfc/*state* (volatile! state)]
-        (db/tx-run! cfg (fn [cfg]
-                          (bfc/disable-database-timeouts! cfg)
-                          (let [ids (->> (:files manifest)
-                                         (reduce (fn [result {:keys [id] :as file}]
-                                                   (let [name' (get file :name)
-                                                         name' (if (map? name)
-                                                                 (get name id)
-                                                                 name')]
-                                                     (conj result (-> cfg
-                                                                      (assoc ::file-id id)
-                                                                      (assoc ::file-name name')
-                                                                      (import-file)))))
-                                                 []))]
-                            (import-file-relations cfg)
-                            (import-storage-objects cfg)
-                            (import-file-media cfg)
-                            (import-file-thumbnails cfg)
-
-                            (bfm/apply-pending-migrations! cfg)
-
-                            ids)))))))
+    (binding [bfc/*state* (volatile! {:media [] :index {}})]
+      (if (::bfc/file-id cfg)
+        (db/tx-run! cfg import-file-and-overwrite*)
+        (db/tx-run! cfg import-files*)))))
 
 ;; --- PUBLIC API
 
@@ -956,17 +991,16 @@
 
   [{:keys [::bfc/ids] :as cfg} output]
 
-  (dm/assert!
-   "expected a set of uuid's for `::bfc/ids` parameter"
-   (and (set? ids)
-        (every? uuid? ids)))
+  (assert
+   (and (set? ids) (every? uuid? ids))
+   "expected a set of uuid's for `::bfc/ids` parameter")
 
-  (dm/assert!
-   "expected instance of jio/IOFactory for `input`"
-   (satisfies? jio/IOFactory output))
+  (assert
+   (satisfies? jio/IOFactory output)
+   "expected instance of jio/IOFactory for `input`")
 
   (let [id (uuid/next)
-        tp (dt/tpoint)
+        tp (ct/tpoint)
         ab (volatile! false)
         cs (volatile! nil)]
     (try
@@ -1002,17 +1036,17 @@
 (defn import-files!
   [{:keys [::bfc/input] :as cfg}]
 
-  (dm/assert!
-   "expected valid profile-id and project-id on `cfg`"
+  (assert
    (and (uuid? (::bfc/profile-id cfg))
-        (uuid? (::bfc/project-id cfg))))
+        (uuid? (::bfc/project-id cfg)))
+   "expected valid profile-id and project-id on `cfg`")
 
-  (dm/assert!
-   "expected instance of jio/IOFactory for `input`"
-   (io/coercible? input))
+  (assert
+   (io/coercible? input)
+   "expected instance of jio/IOFactory for `input`")
 
   (let [id (uuid/next)
-        tp (dt/tpoint)
+        tp (ct/tpoint)
         cs (volatile! nil)]
 
     (l/info :hint "import: started" :id (str id))
@@ -1027,5 +1061,11 @@
       (finally
         (l/info :hint "import: terminated"
                 :id (str id)
-                :elapsed (dt/format-duration (tp))
+                :elapsed (ct/format-duration (tp))
                 :error? (some? @cs))))))
+
+(defn get-manifest
+  [path]
+  (with-open [input (ZipFile. (fs/file path))]
+    (-> (read-manifest input)
+        (validate-manifest))))

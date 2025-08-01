@@ -21,6 +21,7 @@
    [app.common.types.container :as ctn]
    [app.common.types.file :as ctf]
    [app.common.types.grid :as ctg]
+   [app.common.types.library :as ctl]
    [app.common.types.page :as ctp]
    [app.common.types.pages-list :as ctpl]
    [app.common.types.path :as path]
@@ -241,7 +242,7 @@
       [:shapes ::sm/any]
       [:index {:optional true} [:maybe :int]]
       [:after-shape {:optional true} ::sm/any]
-      [:component-swap {:optional true} :boolean]]]
+      [:allow-altering-copies {:optional true} :boolean]]]
 
     [:reorder-children
      [:map {:title "ReorderChildrenChange"}
@@ -418,13 +419,13 @@
       [:type [:= :set-token-set]]
       [:set-name :string]
       [:group? :boolean]
-      [:token-set [:maybe ctob/schema:token-set-attrs]]]]
+      [:token-set [:maybe [:fn ctob/token-set?]]]]]
 
     [:set-token
      [:map {:title "SetTokenChange"}
       [:type [:= :set-token]]
       [:set-name :string]
-      [:token-name :string]
+      [:token-id ::sm/uuid]
       [:token [:maybe ctob/schema:token-attrs]]]]
 
     [:set-base-font-size
@@ -487,7 +488,9 @@
                                (cts/shape? shape-new))
                   (ex/raise :type :assertion
                             :code :data-validation
-                            :hint "invalid shape found after applying changes"
+                            :hint (str "invalid shape found after applying changes on file "
+                                       (:id data-new))
+                            :file-id (:id data-new)
                             ::sm/explain (cts/explain-shape shape-new))))))]
 
     (->> (into #{} (map :page-id) items)
@@ -759,7 +762,7 @@
       (d/update-in-when data [:components component-id :objects] reg-objects))))
 
 (defmethod process-change :mov-objects
-  [data {:keys [parent-id shapes index page-id component-id ignore-touched after-shape component-swap syncing]}]
+  [data {:keys [parent-id shapes index page-id component-id ignore-touched after-shape allow-altering-copies syncing]}]
   (letfn [(calculate-invalid-targets [objects shape-id]
             (let [reduce-fn #(into %1 (calculate-invalid-targets objects %2))]
               (->> (get-in objects [shape-id :shapes])
@@ -774,7 +777,7 @@
               (and shape
                    (not (invalid-targets parent-id))
                    (not (cfh/components-nesting-loop? objects shape-id parent-id))
-                   (or component-swap ;; On a component swap it's allowed to change the structure of a copy
+                   (or allow-altering-copies ;; In some cases (like a component swap) it's allowed to change the structure of a copy
                        syncing ;; If we are syncing the changes of a main component, it's allowed to change the structure of a copy
                        (and
                         (not (ctk/in-component-copy? (get objects (:parent-id shape)))) ;; We don't want to change the structure of component copies
@@ -925,15 +928,15 @@
 
 (defmethod process-change :add-color
   [data {:keys [color]}]
-  (ctc/add-color data color))
+  (ctl/add-color data color))
 
 (defmethod process-change :mod-color
   [data {:keys [color]}]
-  (ctc/set-color data color))
+  (ctl/set-color data color))
 
 (defmethod process-change :del-color
   [data {:keys [id]}]
-  (ctc/delete-color data id))
+  (ctl/delete-color data id))
 
 ;; DEPRECATED: remove before 2.3
 (defmethod process-change :add-recent-color
@@ -998,20 +1001,20 @@
   (assoc data :tokens-lib tokens-lib))
 
 (defmethod process-change :set-token
-  [data {:keys [set-name token-name token]}]
+  [data {:keys [set-name token-id token]}]
   (update data :tokens-lib
           (fn [lib]
             (let [lib' (ctob/ensure-tokens-lib lib)]
               (cond
                 (not token)
-                (ctob/delete-token-from-set lib' set-name token-name)
+                (ctob/delete-token-from-set lib' set-name token-id)
 
-                (not (ctob/get-token-in-set lib' set-name token-name))
+                (not (ctob/get-token-in-set lib' set-name token-id))
                 (ctob/add-token-in-set lib' set-name (ctob/make-token token))
 
                 :else
-                (ctob/update-token-in-set lib' set-name token-name (fn [prev-token]
-                                                                     (ctob/make-token (merge prev-token token)))))))))
+                (ctob/update-token-in-set lib' set-name token-id (fn [prev-token]
+                                                                   (ctob/make-token (merge prev-token token)))))))))
 
 (defmethod process-change :set-token-set
   [data {:keys [set-name group? token-set]}]
@@ -1025,11 +1028,10 @@
                   (ctob/delete-set lib' set-name))
 
                 (not (ctob/get-set lib' set-name))
-                (ctob/add-set lib' (ctob/make-token-set token-set))
+                (ctob/add-set lib' token-set)
 
                 :else
-                (ctob/update-set lib' set-name (fn [prev-token-set]
-                                                 (ctob/make-token-set (merge prev-token-set token-set)))))))))
+                (ctob/update-set lib' set-name (fn [_] token-set)))))))
 
 (defmethod process-change :set-token-theme
   [data {:keys [group theme-name theme]}]

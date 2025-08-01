@@ -1,0 +1,69 @@
+name: Build and Upload Penpot Bundles
+
+on:
+  # Create bundler from manual action
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      gh_ref:
+        description: 'Name of the branch'
+        type: string
+        required: true
+
+jobs:
+  build-bundles:
+    name: Build and Upload Penpot Bundles
+    runs-on: ubuntu-24.04
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.gh_ref }}
+
+      - name: Extract some useful variables
+        id: vars
+        run: |
+          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "gh_branch=${{ github.base_ref || github.ref_name }}" >> $GITHUB_OUTPUT
+
+      # Set up Docker Buildx for multi-arch build
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run manage.sh build-bundle from host
+        run: ./manage.sh build-bundle
+
+      - name: Prepare directories for zipping
+        run: |
+          mkdir zips
+          mv bundles penpot
+
+      - name: Create zip bundles
+        run: |
+          echo "📦 Packaging Penpot bundles..."
+          zip -r zips/penpot.zip penpot
+
+      - name: Upload Penpot bundle to S3
+        run: |
+          aws s3 cp zips/penpot.zip s3://${{ secrets.S3_BUCKET }}/penpot-${{ steps.vars.outputs.gh_branch}}-latest.zip
+          aws s3 cp zips/penpot.zip s3://${{ secrets.S3_BUCKET }}/penpot-${{ steps.vars.outputs.commit_hash }}.zip
+
+      - name: Notify Mattermost
+        uses: mattermost/action-mattermost-notify@master
+        with:
+          MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK }}
+          TEXT: |
+            📦 *New Penpot bundle generated*
+            📄 Triggered from ref: `${{ steps.vars.outputs.gh_branch}}`
+            🔗 Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Print artifact summary URL
+        run: |
+          echo "📦 Artifacts available at:"
+          echo "🔗 https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

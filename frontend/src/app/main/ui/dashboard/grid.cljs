@@ -11,6 +11,7 @@
    [app.common.data.macros :as dm]
    [app.common.geom.point :as gpt]
    [app.common.logging :as log]
+   [app.common.time :as ct]
    [app.config :as cf]
    [app.main.data.common :as dcm]
    [app.main.data.dashboard :as dd]
@@ -38,7 +39,6 @@
    [app.util.dom.dnd :as dnd]
    [app.util.i18n :as i18n :refer [tr]]
    [app.util.keyboard :as kbd]
-   [app.util.time :as dt]
    [app.util.timers :as ts]
    [beicon.v2.core :as rx]
    [cuerdas.core :as str]
@@ -229,9 +229,7 @@
 
 (mf/defc grid-item-metadata
   [{:keys [modified-at]}]
-
-  (let [locale (mf/deref i18n/locale)
-        time   (dt/timeago modified-at {:locale locale})]
+  (let [time (ct/timeago modified-at)]
     [:span {:class (stl/css :date)} time]))
 
 (defn create-counter-element
@@ -414,7 +412,8 @@
        [:div {:class (stl/css :item-info)}
         (if (and (= file-id (:file-id state)) (:edition state))
           [:& inline-edition {:content (:name file)
-                              :on-end edit}]
+                              :on-end edit
+                              :max-length 250}]
           [:h3 (:name file)])
         [:& grid-item-metadata {:modified-at (:modified-at file)}]]
 
@@ -440,7 +439,7 @@
                             :can-edit can-edit
                             :navigate true
                             :on-edit on-edit
-                            :on-menu-close on-menu-close
+                            :on-close on-menu-close
                             :origin origin
                             :parent-id (dm/str file-id "-action-menu")}]])]]]]]))
 

@@ -21,18 +21,17 @@
    [app.common.math :as mth]
    [app.common.schema :as sm]
    [app.common.svg :as csvg]
-   [app.common.text :as txt]
    [app.common.types.color :as types.color]
    [app.common.types.component :as ctk]
    [app.common.types.container :as ctn]
    [app.common.types.file :as ctf]
-   [app.common.types.fill :as types.fill]
+   [app.common.types.fills :as types.fills]
    [app.common.types.path :as path]
    [app.common.types.path.segment :as path.segment]
    [app.common.types.shape :as cts]
    [app.common.types.shape.interactions :as ctsi]
    [app.common.types.shape.shadow :as ctss]
-   [app.common.types.text :as cttx]
+   [app.common.types.text :as types.text]
    [app.common.uuid :as uuid]
    [clojure.set :as set]
    [cuerdas.core :as str]))
@@ -81,7 +80,7 @@
         (update :migrations set/union diff)
         (vary-meta assoc ::migrated (not-empty diff)))))
 
-(defn- generate-migrations-from-version
+(defn generate-migrations-from-version
   "A function that generates new format migration from the old,
   version based migration system"
   [version]
@@ -95,22 +94,33 @@
 (defn migrate-file
   [file libs]
   (binding [cfeat/*new* (atom #{})]
-    (let [version (or (:version file)
-                      (-> file :data :version))]
-      (-> file
-          (assoc :version cfd/version)
-          (update :migrations
-                  (fn [migrations]
-                    (if (nil? migrations)
-                      (generate-migrations-from-version version)
-                      migrations)))
-          ;; NOTE: in some future we can consider to apply
-          ;; a migration to the whole database and remove
-          ;; this code from this function that executes on
-          ;; each file migration operation
-          (update :features cfeat/migrate-legacy-features)
-          (migrate libs)
-          (update :features (fnil into #{}) (deref cfeat/*new*))))))
+    (let [version
+          (or (:version file) (-> file :data :version))
+
+          migrations
+          (not-empty (get file :migrations))
+
+          file
+          (-> file
+              (assoc :version cfd/version)
+              (assoc :migrations
+                     (if migrations
+                       migrations
+                       (generate-migrations-from-version version)))
+              ;; NOTE: in some future we can consider to apply a
+              ;; migration to the whole database and remove this code
+              ;; from this function that executes on each file
+              ;; migration operation
+              (update :features cfeat/migrate-legacy-features)
+              (migrate libs)
+              (update :features (fnil into #{}) (deref cfeat/*new*)))]
+
+      ;; NOTE: When we have no previous migrations, we report all
+      ;; migrations as migrated in order to correctly persist them all
+      ;; and not only the really applied migrations
+      (if (not migrations)
+        (vary-meta file assoc ::migrated (:migrations file))
+        file))))
 
 (defn migrated?
   [file]
@@ -612,7 +622,7 @@
             (let [invalid-node? (complement valid-node?)]
               (cond-> object
                 (cfh/text-shape? object)
-                (update :content #(txt/transform-nodes invalid-node? fix-node %)))))
+                (update :content #(types.text/transform-nodes invalid-node? fix-node %)))))
 
           (update-container [container]
             (d/update-when container :objects d/update-vals update-object))]
@@ -719,7 +729,7 @@
             (let [shape (update-object shape)]
               (if (cfh/text-shape? shape)
                 (-> shape
-                    (update :content (partial txt/transform-nodes identity update-fill))
+                    (update :content (partial types.text/transform-nodes identity update-fill))
                     (d/update-when :position-data #(mapv update-object %)))
                 shape)))
 
@@ -827,7 +837,7 @@
         (d/update-when :components d/update-vals update-container))))
 
 (def ^:private valid-fill?
-  (sm/lazy-validator types.fill/schema:fill))
+  (sm/lazy-validator types.fills/schema:fill))
 
 (defmethod migrate-data "legacy-43"
   [data _]
@@ -845,7 +855,7 @@
 
           (update-object [object]
             (if (cfh/text-shape? object)
-              (update object :content #(txt/transform-nodes identity update-text-node %))
+              (update object :content #(types.text/transform-nodes types.text/is-content-node? update-text-node %))
               object))
 
           (update-container [container]
@@ -1009,8 +1019,8 @@
   [data _]
   (let [update-colors
         (fn [colors]
-          (into {} (filter #(-> % val types.color/valid-color?) colors)))]
-    (update data :colors update-colors)))
+          (into {} (filter #(-> % val types.color/valid-library-color?) colors)))]
+    (d/update-when data :colors update-colors)))
 
 (defmethod migrate-data "legacy-52"
   [data _]
@@ -1023,7 +1033,6 @@
             (d/update-when page :objects d/update-vals update-shape))]
 
     (update data :pages-index d/update-vals update-page)))
-
 
 (defmethod migrate-data "legacy-53"
   [data _]
@@ -1095,7 +1104,7 @@
                 ;; The text shape also can has fills on the text
                 ;; fragments so we need to fix fills there
                 (cond-> (cfh/text-shape? object)
-                  (update :content (partial txt/transform-nodes identity fix-fills)))))
+                  (update :content (partial types.text/transform-nodes types.text/is-content-node? fix-fills)))))
 
           (update-container [container]
             (d/update-when container :objects d/update-vals update-object))]
@@ -1267,21 +1276,21 @@
         (update :pages-index d/update-vals update-container)
         (d/update-when :components d/update-vals update-container))))
 
-(defmethod migrate-data "0002-normalize-bool-content"
+(defmethod migrate-data "0002-normalize-bool-content-v2"
   [data _]
   (letfn [(update-object [object]
-            ;; NOTE: we still preserve the previous value for possible
-            ;; rollback, we still need to perform an other migration
-            ;; for properly delete the bool-content prop from shapes
-            ;; once the know the migration was OK
             (if (cfh/bool-shape? object)
-              (if-let [content (:bool-content object)]
-                (assoc object :content content)
-                object)
+              (if (contains? object :content)
+                (dissoc object :bool-content)
+                (let [content (:bool-content object)]
+                  (-> object
+                      (assoc :content content)
+                      (dissoc :bool-content))))
+
               (dissoc object :bool-content :bool-type)))
 
           (update-container [container]
-            (d/update-when container :objects update-vals update-object))]
+            (d/update-when container :objects d/update-vals update-object))]
 
     (-> data
         (update :pages-index d/update-vals update-container)
@@ -1309,49 +1318,71 @@
         (d/update-when :components d/update-vals update-container)
         (d/without-nils))))
 
-(defmethod migrate-data "0003-convert-path-content"
+(defmethod migrate-data "0003-convert-path-content-v2"
   [data _]
   (some-> cfeat/*new* (swap! conj "fdata/path-data"))
 
-  (letfn [(update-object [object]
-            (if (or (cfh/bool-shape? object)
-                    (cfh/path-shape? object))
-              (update object :content path/content)
-              object))
+  (let [decode-segments
+        (sm/decoder path/schema:segments sm/json-transformer)
 
-          (update-container [container]
-            (d/update-when container :objects update-vals update-object))]
+        update-object
+        (fn [object]
+          (if (or (cfh/bool-shape? object)
+                  (cfh/path-shape? object))
+            (let [content (get object :content)
+                  content (cond
+                            (path/content? content)
+                            content
+
+                            (nil? content)
+                            (path/content [])
+
+                            :else
+                            (-> content
+                                (decode-segments)
+                                (path/content)))]
+              (assoc object :content content))
+            object))
+
+        update-container
+        (fn [container]
+          (d/update-when container :objects d/update-vals update-object))]
 
     (-> data
         (update :pages-index d/update-vals update-container)
         (d/update-when :components d/update-vals update-container))))
 
-(defmethod migrate-data "0004-clean-shadow-and-colors"
+(defmethod migrate-data "0004-clean-shadow-color"
   [data _]
-  (letfn [(clean-shadow [shadow]
-            (update shadow :color (fn [color]
-                                    (let [ref-id   (get color :id)
-                                          ref-file (get color :file-id)]
-                                      (-> (d/without-qualified color)
-                                          (select-keys [:opacity :color :gradient :image :ref-id :ref-file])
-                                          (cond-> ref-id
-                                            (assoc :ref-id ref-id))
-                                          (cond-> ref-file
-                                            (assoc :ref-file ref-file)))))))
+  (let [decode-color (sm/decoder types.color/schema:color sm/json-transformer)
 
-          (update-object [object]
-            (d/update-when object :shadow #(mapv clean-shadow %)))
+        clean-shadow-color
+        (fn [color]
+          (let [ref-id   (get color :id)
+                ref-file (get color :file-id)]
+            (-> (d/without-qualified color)
+                (select-keys [:opacity :color :gradient :image :ref-id :ref-file])
+                (cond-> ref-id
+                  (assoc :ref-id ref-id))
+                (cond-> ref-file
+                  (assoc :ref-file ref-file))
+                (decode-color))))
 
-          (update-container [container]
-            (d/update-when container :objects d/update-vals update-object))
+        clean-shadow
+        (fn [shadow]
+          (update shadow :color clean-shadow-color))
 
-          (clean-library-color [color]
-            (dissoc color :file-id))]
+        update-object
+        (fn [object]
+          (d/update-when object :shadow #(mapv clean-shadow %)))
+
+        update-container
+        (fn [container]
+          (d/update-when container :objects d/update-vals update-object))]
 
     (-> data
         (update :pages-index d/update-vals update-container)
-        (d/update-when :components d/update-vals update-container)
-        (d/update-when :colors d/update-vals clean-library-color))))
+        (d/update-when :components d/update-vals update-container))))
 
 (defmethod migrate-data "0005-deprecate-image-type"
   [data _]
@@ -1391,7 +1422,7 @@
 
           (update-object [object]
             (if (cfh/text-shape? object)
-              (update object :content (partial txt/transform-nodes identity fix-fills))
+              (update object :content (partial types.text/transform-nodes types.text/is-content-node? fix-fills))
               object))
 
           (update-container [container]
@@ -1425,7 +1456,7 @@
 
           ;; Fixes shapes with nested :fills in the :fills attribute
           ;; introduced in a migration `0006-fix-old-texts-fills` when
-          ;; txt/transform-nodes with identity pred was broken
+          ;; types.text/transform-nodes with identity pred was broken
           (remove-nested-fills [[fill :as fills]]
             (if (and (= 1 (count fills))
                      (contains? fill :fills))
@@ -1434,7 +1465,7 @@
 
           (clear-fill [fill]
             (-> fill
-                (select-keys types.fill/fill-attrs)
+                (select-keys types.fills/fill-attrs)
                 (d/update-when :fill-image clear-color-image)
                 (d/update-when :fill-color-gradient clear-color-gradient)))
 
@@ -1451,8 +1482,8 @@
 
           (fix-text-content [content]
             (->> content
-                 (txt/transform-nodes txt/is-content-node? fix-object)
-                 (txt/transform-nodes txt/is-paragraph-set-node? #(dissoc % :fills))))
+                 (types.text/transform-nodes types.text/is-content-node? fix-object)
+                 (types.text/transform-nodes types.text/is-paragraph-set-node? #(dissoc % :fills))))
 
           (update-shape [object]
             (-> object
@@ -1469,14 +1500,32 @@
         (update :pages-index d/update-vals update-container)
         (d/update-when :components d/update-vals update-container))))
 
-(defmethod migrate-data "0008-fix-library-colors-opacity"
+(defmethod migrate-data "0008-fix-library-colors-v4"
   [data _]
-  (letfn [(update-color [color]
+  (letfn [(clear-color-opacity [color]
             (if (and (contains? color :opacity)
                      (nil? (get color :opacity)))
               (assoc color :opacity 1)
-              color))]
-    (d/update-when data :colors d/update-vals update-color)))
+              color))
+
+          (clear-color [color]
+            (-> color
+                (select-keys types.color/library-color-attrs)
+                (clear-color-opacity)
+                (d/without-nils)))]
+
+    (d/update-when data :colors d/update-vals clear-color)))
+
+(defmethod migrate-data "0009-clean-library-colors"
+  [data _]
+  (d/update-when data :colors
+                 (fn [colors]
+                   (reduce-kv (fn [colors id color]
+                                (if (types.color/valid-library-color? color)
+                                  colors
+                                  (dissoc colors id)))
+                              colors
+                              colors))))
 
 (defmethod migrate-data "0009-add-partial-text-touched-flags"
   [data _]
@@ -1489,7 +1538,7 @@
                     ref-shape       (ctf/find-ref-shape file page libs object
                                                         {:include-deleted? true :with-context? true})
                     partial-touched (when ref-shape
-                                      (cttx/get-diff-type (:content object) (:content ref-shape)))]
+                                      (types.text/get-diff-type (:content object) (:content ref-shape)))]
                 (if (seq partial-touched)
                   (update object :touched (fn [touched]
                                             (reduce #(ctk/set-touched-group %1 %2)
@@ -1502,6 +1551,23 @@
             (d/update-when page :objects d/update-vals (partial update-object page)))]
 
     (update data :pages-index d/update-vals update-page)))
+
+(defmethod migrate-data "0010-fix-swap-slots-pointing-non-existent-shapes"
+  [data _]
+  (letfn [(fix-shape [page shape]
+            (if (ctk/get-swap-slot shape)
+              (let [libs (some-> (:libs data) deref)
+                    ref-id (when libs (ctf/find-ref-id-for-swapped shape page libs))]
+                (if (nil? ref-id)
+                  (ctk/remove-swap-slot shape)
+                  shape))
+              shape))
+
+          (update-page [page]
+            (d/update-when page :objects d/update-vals (partial fix-shape page)))]
+    (-> data
+        (update :pages-index d/update-vals update-page))))
+
 
 (def available-migrations
   (into (d/ordered-set)
@@ -1558,13 +1624,15 @@
          "legacy-66"
          "legacy-67"
          "0001-remove-tokens-from-groups"
-         "0002-normalize-bool-content"
+         "0002-normalize-bool-content-v2"
          "0002-clean-shape-interactions"
          "0003-fix-root-shape"
-         "0003-convert-path-content"
-         "0004-clean-shadow-and-colors"
+         "0003-convert-path-content-v2"
+         "0004-clean-shadow-color"
          "0005-deprecate-image-type"
          "0006-fix-old-texts-fills"
          "0007-clear-invalid-strokes-and-fills-v2"
-         "0008-fix-library-colors-opacity"
-         "0009-add-partial-text-touched-flags"]))
+         "0008-fix-library-colors-v4"
+         "0009-clean-library-colors"
+         "0009-add-partial-text-touched-flags"
+         "0010-fix-swap-slots-pointing-non-existent-shapes"]))

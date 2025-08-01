@@ -7,16 +7,16 @@
 (ns app.main.ui.inspect.attributes.fill
   (:require-macros [app.main.style :as stl])
   (:require
-   [app.common.types.color :as types.color]
+   [app.common.types.fills :as types.fills]
    [app.main.ui.components.title-bar :refer [inspect-title-bar*]]
    [app.main.ui.inspect.attributes.common :refer [color-row]]
    [app.util.code-gen.style-css :as css]
    [app.util.i18n :refer [tr]]
    [rumext.v2 :as mf]))
 
-(def properties [:background :background-color :background-image])
+(def ^:private properties [:background :background-color :background-image])
 
-(defn has-fill? [shape]
+(defn- has-fill? [shape]
   (and
    (not (contains? #{:text :group} (:type shape)))
    (or (:fill-color shape)
@@ -31,7 +31,7 @@
         ;; FIXME: this looks broken code, because shape does not
         ;; longer contains :fill-xxxx attributes but it is preserved
         ;; as it was just moved the impl; this need to be fixed
-        color     (types.color/fill->color shape)
+        color     (types.fills/fill->color shape)
         on-change
         (mf/use-fn
          (fn [format]

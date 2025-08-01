@@ -11,6 +11,7 @@
    [app.common.exceptions :as ex]
    [app.common.features :as cfeat]
    [app.common.schema :as sm]
+   [app.common.time :as ct]
    [app.common.types.team :as tt]
    [app.common.uuid :as uuid]
    [app.config :as cf]
@@ -30,7 +31,6 @@
    [app.setup :as-alias setup]
    [app.storage :as sto]
    [app.util.services :as sv]
-   [app.util.time :as dt]
    [app.worker :as wrk]
    [clojure.set :as set]))
 
@@ -78,9 +78,10 @@
 
 (defn decode-row
   [{:keys [features subscription] :as row}]
-  (cond-> row
-    (some? features) (assoc :features (db/decode-pgarray features #{}))
-    (some? subscription) (assoc :subscription (db/decode-transit-pgobject subscription))))
+  (when row
+    (cond-> row
+      (some? features) (assoc :features (db/decode-pgarray features #{}))
+      (some? subscription) (assoc :subscription (db/decode-transit-pgobject subscription)))))
 
 ;; FIXME: move
 
@@ -139,7 +140,8 @@
             '~:status', CASE COALESCE(p.props->'~:subscription'->>'~:type', 'professional')
                           WHEN 'professional' THEN 'active'
                           ELSE COALESCE(p.props->'~:subscription'->>'~:status', 'incomplete')
-                       END
+                       END,
+            '~:seats', p.props->'~:subscription'->'~:quantity'
           ) AS subscription
      FROM team_profile_rel AS tp
      JOIN team AS t ON (t.id = tp.team_id)
@@ -460,11 +462,12 @@
 
 ;; --- COMMAND QUERY: get-team-info
 
-(defn- get-team-info
+(defn get-team-info
   [{:keys [::db/conn] :as cfg} {:keys [id] :as params}]
-  (db/get* conn :team
-           {:id id}
-           {::sql/columns [:id :is-default]}))
+  (-> (db/get* conn :team
+               {:id id}
+               {::sql/columns [:id :is-default :features]})
+      (decode-row)))
 
 (sv/defmethod ::get-team-info
   "Retrieve minimal team info by its ID."
@@ -663,7 +666,7 @@
 
   (let [delay (ldel/get-deletion-delay team)
         team  (db/update! conn :team
-                          {:deleted-at (dt/in-future delay)}
+                          {:deleted-at (ct/in-future delay)}
                           {:id id}
                           {::db/return-keys true})]
 

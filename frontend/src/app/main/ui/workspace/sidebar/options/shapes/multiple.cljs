@@ -10,11 +10,11 @@
    [app.common.attrs :as attrs]
    [app.common.data :as d]
    [app.common.geom.shapes :as gsh]
-   [app.common.text :as txt]
    [app.common.types.component :as ctk]
    [app.common.types.path :as path]
    [app.common.types.shape.attrs :refer [editable-attrs]]
    [app.common.types.shape.layout :as ctl]
+   [app.common.types.text :as txt]
    [app.main.refs :as refs]
    [app.main.ui.hooks :as hooks]
    [app.main.ui.workspace.sidebar.options.menus.blur :refer [blur-attrs blur-menu]]
@@ -22,7 +22,7 @@
    [app.main.ui.workspace.sidebar.options.menus.component :refer [component-menu]]
    [app.main.ui.workspace.sidebar.options.menus.constraints :refer [constraint-attrs constraints-menu]]
    [app.main.ui.workspace.sidebar.options.menus.exports :refer [exports-attrs exports-menu]]
-   [app.main.ui.workspace.sidebar.options.menus.fill :refer [fill-attrs fill-menu]]
+   [app.main.ui.workspace.sidebar.options.menus.fill :as fill]
    [app.main.ui.workspace.sidebar.options.menus.layer :refer [layer-attrs layer-menu]]
    [app.main.ui.workspace.sidebar.options.menus.layout-container :refer [layout-container-flex-attrs layout-container-menu]]
    [app.main.ui.workspace.sidebar.options.menus.layout-item :refer [layout-item-attrs layout-item-menu]]
@@ -159,7 +159,7 @@
   {:measure           measure-attrs
    :layer             layer-attrs
    :constraint        constraint-attrs
-   :fill              fill-attrs
+   :fill              fill/fill-attrs
    :shadow            shadow-attrs
    :blur              blur-attrs
    :stroke            stroke-attrs
@@ -203,6 +203,9 @@
   [shapes objects attr-group]
   (let [attrs (group->attrs attr-group)
 
+        default-text-attrs
+        (txt/get-default-text-attrs)
+
         merge-attrs
         (fn [v1 v2]
           (cond
@@ -233,7 +236,7 @@
               (let [shape-attrs (select-keys shape attrs)
 
                     content-attrs
-                    (attrs/get-text-attrs-multi shape txt/default-text-attrs attrs)
+                    (attrs/get-text-attrs-multi shape default-text-attrs attrs)
 
                     new-values
                     (-> values
@@ -388,7 +391,7 @@
        [:& ot/text-menu {:type type :ids text-ids :values text-values}])
 
      (when-not (empty? fill-ids)
-       [:& fill-menu {:type type :ids fill-ids :values fill-values}])
+       [:> fill/fill-menu* {:type type :ids fill-ids :values fill-values}])
 
      (when-not (empty? stroke-ids)
        [:& stroke-menu {:type type :ids stroke-ids :show-caps show-caps :values stroke-values

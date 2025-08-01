@@ -25,7 +25,7 @@
    [app.main.ui.dashboard.subscription :refer [team*
                                                members-cta*
                                                show-subscription-members-main-banner?
-                                               show-subscription-invitations-main-banner?]]
+                                               show-subscription-members-small-banner?]]
    [app.main.ui.dashboard.team-form]
    [app.main.ui.ds.foundations.assets.icon :refer [icon*]]
    [app.main.ui.icons :as i]
@@ -304,7 +304,7 @@
        [:div {:class (stl/css :rol-selector)}
         [:span {:class (stl/css :rol-label)} (tr role)]])
 
-     [:& dropdown {:show @show? :on-close on-hide}
+     [:& dropdown {:show @show? :on-close on-hide :dropdown-id (str "member-role-" (:id member))}
       [:ul {:class (stl/css :roles-dropdown)
             :role "listbox"}
        [:li {:on-click on-set-viewer
@@ -341,7 +341,7 @@
                  :on-click on-show}
         menu-icon]
 
-       [:& dropdown {:show @show? :on-close on-hide}
+       [:& dropdown {:show @show? :on-close on-hide :dropdown-id (str "member-actions-" (:id member))}
         [:ul {:class (stl/css :actions-dropdown)}
          (when is-you?
            [:li {:on-click on-leave
@@ -544,18 +544,17 @@
    [:section {:class (stl/css-case
                       :dashboard-container true
                       :dashboard-team-members true
-                      :dashboard-top-cta (show-subscription-members-main-banner? team profile))}
+                      :dashboard-top-cta (show-subscription-members-main-banner? team))}
     (when (and (contains? cfg/flags :subscriptions)
-               (show-subscription-members-main-banner? team profile))
-      [:> members-cta* {:banner-is-expanded true :team team :profile profile}])
+               (show-subscription-members-main-banner? team))
+      [:> members-cta* {:banner-is-expanded true :team team}])
     [:> team-members*
      {:profile profile
       :team team}]
+
     (when (and
            (contains? cfg/flags :subscriptions)
-           (or
-            (and (= (:type (:subscription team)) "professional") (< (count (:members team)) 8))
-            (= (:status (:subscription team)) "trialing")))
+           (show-subscription-members-small-banner? team))
       [:> members-cta* {:banner-is-expanded false :team team}])]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -593,7 +592,7 @@
        [:div {:class (stl/css :rol-selector)}
         [:span {:class (stl/css :rol-label)} label]])
 
-     [:& dropdown {:show @show? :on-close on-hide}
+     [:& dropdown {:show @show? :on-close on-hide :dropdown-id "invitation-role-selector"}
       [:ul {:class (stl/css :roles-dropdown)}
        [:li {:data-role "admin"
              :class (stl/css :rol-dropdown-item)
@@ -693,7 +692,7 @@
                :on-click on-show}
       menu-icon]
 
-     [:& dropdown {:show @show? :on-close on-hide}
+     [:& dropdown {:show @show? :on-close on-hide :dropdown-id "invitation-actions"}
       [:ul {:class (stl/css :actions-dropdown :invitations-dropdown)}
        [:li {:on-click on-copy
              :class (stl/css :action-dropdown-item)}
@@ -821,15 +820,13 @@
                :team team}]
    [:section {:class (stl/css-case
                       :dashboard-team-invitations true
-                      :dashboard-top-cta (show-subscription-invitations-main-banner? team))}
+                      :dashboard-top-cta (show-subscription-members-main-banner? team))}
     (when (and (contains? cfg/flags :subscriptions)
-               (show-subscription-invitations-main-banner? team))
+               (show-subscription-members-main-banner? team))
       [:> members-cta* {:banner-is-expanded true :team team}])
     [:> invitation-section* {:team team}]
     (when (and (contains? cfg/flags :subscriptions)
-               (or
-                (and (= (:type (:subscription team)) "professional") (< (count (:members team)) 8))
-                (= (:status (:subscription team)) "trialing")))
+               (show-subscription-members-small-banner? team))
       [:> members-cta* {:banner-is-expanded false :team team}])]])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -985,7 +982,7 @@
        [:button {:class (stl/css :menu-btn)
                  :on-click on-show}
         menu-icon]
-       [:& dropdown {:show @show? :on-close on-hide}
+       [:& dropdown {:show @show? :on-close on-hide :dropdown-id "webhook-actions"}
         [:ul {:class (stl/css :webhook-actions-dropdown)}
          [:li {:on-click on-edit
                :class (stl/css :webhook-dropdown-item)} (tr "labels.edit")]
@@ -1140,53 +1137,54 @@
     [:*
      [:& header {:section :dashboard-team-settings :team team}]
      [:section {:class (stl/css :dashboard-team-settings)}
-      [:div {:class (stl/css :block :info-block)}
-       [:div {:class (stl/css :team-icon)}
-        (when can-edit
-          [:button {:class (stl/css :update-overlay)
-                    :on-click on-image-click}
-           image-icon])
-        [:img {:class (stl/css :team-image)
-               :src (cfg/resolve-team-photo-url team)}]
-        (when can-edit
-          [:& file-uploader {:accept "image/jpeg,image/png"
-                             :multi false
-                             :ref finput
-                             :on-selected on-file-selected}])]
-       [:div {:class (stl/css :block-label)}
-        (tr "dashboard.team-info")]
-       [:div {:class (stl/css :block-text)}
-        (:name team)]]
+      [:div {:class (stl/css :settings-container)}
+       [:div {:class (stl/css :block :info-block)}
+        [:div {:class (stl/css :team-icon)}
+         (when can-edit
+           [:button {:class (stl/css :update-overlay)
+                     :on-click on-image-click}
+            image-icon])
+         [:img {:class (stl/css :team-image)
+                :src (cfg/resolve-team-photo-url team)}]
+         (when can-edit
+           [:& file-uploader {:accept "image/jpeg,image/png"
+                              :multi false
+                              :ref finput
+                              :on-selected on-file-selected}])]
+        [:div {:class (stl/css :block-label)}
+         (tr "dashboard.team-info")]
+        [:div {:class (stl/css :block-text)}
+         (:name team)]]
 
-      [:div {:class (stl/css :block)}
-       [:div {:class (stl/css :block-label)}
-        (tr "dashboard.team-members")]
+       [:div {:class (stl/css :block)}
+        [:div {:class (stl/css :block-label)}
+         (tr "dashboard.team-members")]
 
-       [:div {:class (stl/css :block-content)}
-        [:img {:class (stl/css :owner-icon)
-               :src (cfg/resolve-profile-photo-url owner)}]
-        [:span {:class (stl/css :block-text)}
-         (str (:name owner) " ("  (tr "labels.owner") ")")]]
+        [:div {:class (stl/css :block-content)}
+         [:img {:class (stl/css :owner-icon)
+                :src (cfg/resolve-profile-photo-url owner)}]
+         [:span {:class (stl/css :block-text)}
+          (str (:name owner) " ("  (tr "labels.owner") ")")]]
 
-       [:div {:class (stl/css :block-content)}
-        user-icon
-        [:span {:class (stl/css :block-text)}
-         (tr "dashboard.num-of-members" (count members))]]]
+        [:div {:class (stl/css :block-content)}
+         user-icon
+         [:span {:class (stl/css :block-text)}
+          (tr "dashboard.num-of-members" (count members))]]]
 
-      [:div {:class (stl/css :block)}
-       [:div {:class (stl/css :block-label)}
-        (tr "dashboard.team-projects")]
+       [:div {:class (stl/css :block)}
+        [:div {:class (stl/css :block-label)}
+         (tr "dashboard.team-projects")]
 
-       [:div {:class (stl/css :block-content)}
-        group-icon
-        [:span {:class (stl/css :block-text)}
-         (tr "labels.num-of-projects" (i18n/c (dec (:projects stats))))]]
+        [:div {:class (stl/css :block-content)}
+         group-icon
+         [:span {:class (stl/css :block-text)}
+          (tr "labels.num-of-projects" (i18n/c (dec (:projects stats))))]]
 
-       [:div {:class (stl/css :block-content)}
-        document-icon
-        [:span {:class (stl/css :block-text)}
-         (tr "labels.num-of-files" (i18n/c (:files stats)))]]]
+        [:div {:class (stl/css :block-content)}
+         document-icon
+         [:span {:class (stl/css :block-text)}
+          (tr "labels.num-of-files" (i18n/c (:files stats)))]]]
 
-      (when (contains? cfg/flags :subscriptions)
-        [:> team* {:is-owner (:is-owner permissions) :team team}])]]))
+       (when (contains? cfg/flags :subscriptions)
+         [:> team* {:is-owner (:is-owner permissions) :team team}])]]]))
 

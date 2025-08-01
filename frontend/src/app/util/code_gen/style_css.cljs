@@ -12,8 +12,9 @@
    [app.common.geom.matrix :as gmt]
    [app.common.geom.shapes.bounds :as gsb]
    [app.common.geom.shapes.points :as gpo]
-   [app.common.text :as txt]
+   [app.common.text :as legacy.txt]
    [app.common.types.shape.layout :as ctl]
+   [app.common.types.text :as types.text]
    [app.main.ui.shapes.text.styles :as sts]
    [app.util.code-gen.common :as cgc]
    [app.util.code-gen.style-css-formats :refer [format-value format-shadow]]
@@ -77,6 +78,7 @@ body {
    :filter
    :opacity
    :overflow
+   :blend-mode
 
    ;; Flex/grid related properties
    :display
@@ -171,10 +173,15 @@ body {
      (format-value property value options))))
 
 (defn format-css-property
+  "Format a single CSS property in the format 'property: value;'."
   [[property value] options]
   (when (some? value)
-    (let [formatted-value (format-css-value property value options)]
-      (dm/fmt "%: %;" (d/name property) formatted-value))))
+    (let [formatted-value (format-css-value property value options)
+          ;; If the property is blend-mode, we should use a different property name.
+          property-name (if (= property :blend-mode)
+                          (dm/str "mix-" (d/name property))
+                          (d/name property))]
+      (dm/fmt "%: %;" property-name formatted-value))))
 
 (defn format-css-properties
   "Format a list of [property value] into a list of css properties in the format 'property: value;'"
@@ -226,8 +233,8 @@ body {
   (let [selector (cgc/shape->selector shape)]
     (->> shape
          :content
-         (txt/index-content)
-         (txt/node-seq)
+         (legacy.txt/index-content)
+         (types.text/node-seq)
          (map #(node->css shape selector %))
          (str/join "\n"))))
 
@@ -290,6 +297,7 @@ body {
        (format-css-property options))))
 
 (defn get-css-value
+  "Get the CSS value for a given property of a shape."
   ([objects shape property]
    (get-css-value objects shape property nil))
 

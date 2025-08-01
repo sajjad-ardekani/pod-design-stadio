@@ -59,6 +59,14 @@
            on-unmount children is-selected icon disabled value]}]
   (let [submenu-ref (mf/use-ref nil)
         hovering?   (mf/use-ref false)
+
+        on-click'
+        (mf/use-fn
+         (mf/deps on-click)
+         (fn [event]
+           (st/emit! dw/hide-context-menu)
+           (when on-click (on-click event))))
+
         on-pointer-enter
         (mf/use-fn
          (fn []
@@ -96,7 +104,7 @@
             :disabled disabled
             :data-value value
             :ref set-dom-node
-            :on-click on-click
+            :on-click on-click'
             :on-pointer-enter on-pointer-enter
             :on-pointer-leave on-pointer-leave}
        [:span
@@ -110,7 +118,7 @@
             :disabled disabled
             :ref set-dom-node
             :data-value value
-            :on-click on-click
+            :on-click on-click'
             :on-pointer-enter on-pointer-enter
             :on-pointer-leave on-pointer-leave}
        [:span {:class (stl/css :title)} title]
@@ -563,9 +571,14 @@
         heads                      (filter ctk/instance-head? shapes)
         components-menu-entries    (cmm/generate-components-menu-entries heads)
         variant-container?         (and single? (ctk/is-variant-container? (first shapes)))
-        do-add-component           #(st/emit! (dwl/add-component))
-        do-add-multiple-components #(st/emit! (dwl/add-multiple-components))
-        do-add-variant             #(st/emit! (dwv/add-new-variant (:id (first shapes))))]
+        all-main?                  (every? ctk/main-instance? shapes)
+        any-variant?               (some ctk/is-variant? shapes)
+        do-add-component           (mf/use-fn #(st/emit! (dwl/add-component)))
+        do-add-multiple-components (mf/use-fn #(st/emit! (dwl/add-multiple-components)))
+        do-combine-as-variants     (mf/use-fn #(st/emit! (dwv/combine-as-variants)))
+        do-add-variant             (mf/use-fn
+                                    (mf/deps shapes)
+                                    #(st/emit! (dwv/add-new-variant (:id (first shapes)))))]
     [:*
      (when can-make-component ;; We don't want to change the structure of component copies
        [:*
@@ -589,10 +602,17 @@
                            :on-click (:action entry)}])])
 
      (when variant-container?
-       [:> menu-separator*]
-       [:> menu-entry* {:title (tr "workspace.shape.menu.add-variant")
-                        :shortcut (sc/get-tooltip :create-component)
-                        :on-click do-add-variant}])]))
+       [:*
+        [:> menu-separator*]
+        [:> menu-entry* {:title (tr "workspace.shape.menu.add-variant")
+                         :shortcut (sc/get-tooltip :create-component)
+                         :on-click do-add-variant}]])
+
+     (when (and (not single?) all-main? (not any-variant?))
+       [:*
+        [:> menu-separator*]
+        [:> menu-entry* {:title (tr "workspace.shape.menu.combine-as-variants")
+                         :on-click do-combine-as-variants}]])]))
 
 (mf/defc context-menu-delete*
   {::mf/props :obj

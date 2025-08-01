@@ -7,15 +7,15 @@
 (ns app.main.ui.workspace.colorpicker.gradients
   (:require-macros [app.main.style :as stl])
   (:require
-   [app.common.colors :as cc]
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.math :as mth]
-   [app.common.types.fill :as types.fill]
+   [app.common.types.color :as cc]
+   [app.common.types.fills :as types.fills]
    [app.config :as cfg]
    [app.main.features :as features]
    [app.main.ui.components.numeric-input :refer [numeric-input*]]
-   [app.main.ui.components.reorder-handler :refer [reorder-handler]]
+   [app.main.ui.components.reorder-handler :refer [reorder-handler*]]
    [app.main.ui.components.select :refer [select]]
    [app.main.ui.ds.buttons.icon-button :refer [icon-button*]]
    [app.main.ui.formats :as fmt]
@@ -80,10 +80,10 @@
 
         handle-remove-stop
         (mf/use-callback
-         (mf/deps on-remove-stop stop)
+         (mf/deps on-remove-stop index)
          (fn []
            (when on-remove-stop
-             (on-remove-stop stop))))
+             (on-remove-stop index))))
 
         handle-focus-stop-offset
         (mf/use-fn
@@ -139,7 +139,7 @@
                                 :dnd-over-top (= (:over dprops) :top)
                                 :dnd-over-bot (= (:over dprops) :bot))}
 
-     [:& reorder-handler {:ref dref}]
+     [:> reorder-handler* {:ref dref}]
 
      [:div {:class (stl/css :offset-input-wrapper)}
       [:span {:class (stl/css :icon-text)} "%"]
@@ -288,7 +288,7 @@
            (when on-reverse-stops
              (on-reverse-stops))))
         cap-stops? (or (features/use-feature "render-wasm/v1") (contains? cfg/flags :frontend-binary-fills))
-        add-stop-disabled? (when cap-stops? (>= (count stops) types.fill/MAX-GRADIENT-STOPS))]
+        add-stop-disabled? (when cap-stops? (>= (count stops) types.fills/MAX-GRADIENT-STOPS))]
 
     [:div {:class (stl/css :gradient-panel)}
      [:div {:class (stl/css :gradient-preview)}

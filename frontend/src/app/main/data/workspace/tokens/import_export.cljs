@@ -44,10 +44,10 @@
 
 (defn- show-unknown-types-warning [unknown-tokens]
   (let [type->tokens (group-by-value unknown-tokens)]
-    (ntf/show {:content (tr "workspace.tokens.unknown-token-type")
+    (ntf/show {:content (tr "workspace.tokens.unknown-token-type-message")
                :detail (->> (for [[token-type tokens] type->tokens]
                               (tr "workspace.tokens.unknown-token-type-section" token-type (count tokens)))
-                            (str/join "\n"))
+                            (str/join "<br>"))
                :type :toast
                :level :info})))
 
@@ -70,7 +70,7 @@
                                                               (and (not (contains? cf/flags :token-units))
                                                                    (= dtcg-token-type "number"))
                                                               (and (not (contains? cf/flags :token-typography-types))
-                                                                   (contains? ctt/typography-keys dtcg-token-type)))
+                                                                   (contains? ctt/ff-typography-keys dtcg-token-type)))
                                                            nil
                                                            dtcg-token-type))})}
     (catch js/Error e

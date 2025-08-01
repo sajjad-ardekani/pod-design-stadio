@@ -7,15 +7,16 @@
 (ns app.main.ui.inspect.attributes.stroke
   (:require-macros [app.main.style :as stl])
   (:require
+   [app.main.ui.components.copy-button :refer [copy-button*]]
    [app.main.ui.components.title-bar :refer [inspect-title-bar*]]
-   [app.main.ui.inspect.attributes.common :refer [color-row]]
+   [app.main.ui.inspect.attributes.common :as cmm]
    [app.util.code-gen.style-css :as css]
    [app.util.i18n :refer [tr]]
    [rumext.v2 :as mf]))
 
-(def properties [:border])
+(def ^:private properties [:border-style :border-width])
 
-(defn stroke->color [shape]
+(defn- stroke->color [shape]
   {:color (:stroke-color shape)
    :opacity (:stroke-opacity shape)
    :gradient (:stroke-color-gradient shape)
@@ -23,21 +24,32 @@
    :file-id (:stroke-color-ref-file shape)
    :image (:stroke-image shape)})
 
-(defn has-stroke? [shape]
+(defn- has-stroke? [shape]
   (seq (:strokes shape)))
 
 (mf/defc stroke-block
   {::mf/wrap-props false}
-  [{:keys [objects shape]}]
+  [{:keys [objects shape stroke]}]
   (let [format*   (mf/use-state :hex)
         format    (deref format*)
-        color     (stroke->color shape)
+        color     (stroke->color stroke)
         on-change
         (mf/use-fn
          (fn [format]
            (reset! format* format)))]
     [:div {:class (stl/css :attributes-fill-block)}
-     [:& color-row
+     (for [property properties]
+       (let [property-name (cmm/get-css-rule-humanized property)
+             property-value (css/get-css-value objects stroke property)]
+         [:div {:class (stl/css :stroke-row)}
+          [:div {:class (stl/css :global/attr-label)
+                 :key   (str "stroke-" (:id shape) "-" property)}
+           property-name]
+          [:div {:class (stl/css :global/attr-value)}
+
+           [:> copy-button* {:data (css/get-css-property objects stroke property)}
+            [:div {:class (stl/css :button-children)} property-value]]]]))
+     [:& cmm/color-row
       {:color color
        :format format
        :on-change-format on-change
@@ -54,6 +66,7 @@
 
        [:div {:class (stl/css :attributes-content)}
         (for [shape shapes]
-          (for [value (:strokes shape)]
-            [:& stroke-block {:key (str "stroke-color-" (:id shape) value)
-                              :shape value}]))]])))
+          (for [stroke (:strokes shape)]
+            [:& stroke-block {:key (str "stroke-color-" (:id shape) stroke)
+                              :shape shape
+                              :stroke stroke}]))]])))
