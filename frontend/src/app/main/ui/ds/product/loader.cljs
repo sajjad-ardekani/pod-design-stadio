@@ -20,9 +20,7 @@
   [{:title (tr "loader.tips.01.title")
     :message (tr "loader.tips.01.message")}
    {:title (tr "loader.tips.02.title")
-    :message (tr "loader.tips.02.message")}
-   {:title (tr "loader.tips.03.title")
-    :message (tr "loader.tips.03.message")}])
+    :message (tr "loader.tips.02.message")}])
 
 (mf/defc loader-icon*
   {::mf/private true}
