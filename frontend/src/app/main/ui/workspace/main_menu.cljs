@@ -617,7 +617,7 @@
 
      (when can-edit
        [:*
-;;         [:div {:class (stl/css :separator)}]
+        [:div {:class (stl/css :separator)}]
 
         [:> dropdown-menu-item* {:class (stl/css :submenu-item)
                                  :on-click    on-pin-version
