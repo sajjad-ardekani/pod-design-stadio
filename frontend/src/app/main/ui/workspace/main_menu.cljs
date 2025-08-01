@@ -598,22 +598,22 @@
                                                  :file true)
                        :on-close on-close}
 
-;;      (if ^boolean shared?
-;;        (when can-edit
-;;          [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-;;                                   :on-click    on-remove-shared
-;;                                   :on-key-down on-remove-shared-key-down
-;;                                   :id          "file-menu-remove-shared"}
-;;           [:span {:class (stl/css :item-name)}
-;;            (tr "dashboard.unpublish-shared")]])
-;;
-;;        (when can-edit
-;;          [:> dropdown-menu-item* {:class (stl/css :submenu-item)
-;;                                   :on-click    on-add-shared
-;;                                   :on-key-down on-add-shared-key-down
-;;                                   :id          "file-menu-add-shared"}
-;;           [:span {:class (stl/css :item-name)}
-;;            (tr "dashboard.add-shared")]]))
+     (if ^boolean shared?
+       (when can-edit
+         [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+                                  :on-click    on-remove-shared
+                                  :on-key-down on-remove-shared-key-down
+                                  :id          "file-menu-remove-shared"}
+          [:span {:class (stl/css :item-name)}
+           (tr "dashboard.unpublish-shared")]])
+
+       (when can-edit
+         [:> dropdown-menu-item* {:class (stl/css :submenu-item)
+                                  :on-click    on-add-shared
+                                  :on-key-down on-add-shared-key-down
+                                  :id          "file-menu-add-shared"}
+          [:span {:class (stl/css :item-name)}
+           (tr "dashboard.add-shared")]]))
 
      (when can-edit
        [:*

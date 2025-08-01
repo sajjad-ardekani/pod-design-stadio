@@ -145,15 +145,15 @@
            :on-click interrupt}
           i/move]]
         [:*
-;;          [:li
-;;           [:button
-;;            {:title test-tooltip-board-text
-;;             :aria-label (tr "workspace.toolbar.frame" (sc/get-tooltip :draw-frame))
-;;             :class  (stl/css-case :main-toolbar-options-button true :selected (= drawtool :frame))
-;;             :on-click select-drawtool
-;;             :data-tool "frame"
-;;             :data-testid "artboard-btn"}
-;;            i/board]]
+         [:li
+          [:button
+           {:title test-tooltip-board-text
+            :aria-label (tr "workspace.toolbar.frame" (sc/get-tooltip :draw-frame))
+            :class  (stl/css-case :main-toolbar-options-button true :selected (= drawtool :frame))
+            :on-click select-drawtool
+            :data-tool "frame"
+            :data-testid "artboard-btn"}
+           i/board]]
          [:li
           [:button
            {:title (tr "workspace.toolbar.rect" (sc/get-tooltip :draw-rect))

@@ -234,11 +234,11 @@
           :on-click toggle-history}
          i/history]])
 
-     (when display-share-button?
-       [:a {:class (stl/css :viewer-btn)
-            :title (tr "workspace.header.share")
-            :on-click open-share-dialog}
-        i/share])
+;;      (when display-share-button?
+;;        [:a {:class (stl/css :viewer-btn)
+;;             :title (tr "workspace.header.share")
+;;             :on-click open-share-dialog}
+;;         i/share])
 
 ;;      [:a {:class (stl/css :viewer-btn)
 ;;           :title (tr "workspace.header.viewer" (sc/get-tooltip :open-viewer))
