@@ -91,7 +91,7 @@
         (dom/select-text! (mf/ref-val input-ref))))
 
     [:header {:class (dm/str class " " (stl/css :workspace-header-left))}
-     [:a {:href "https://app.podconverge.com/panel/design-hub/projects"
+     [:a {:href "https://app.podconverge.com/panel/design-hub/create-project/projects"
           :class (stl/css :main-icon)} i/logo-icon]
      [:div {:alt (tr "workspace.sitemap")
             :class (stl/css :project-tree)}
