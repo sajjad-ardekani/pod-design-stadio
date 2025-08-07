@@ -43,17 +43,17 @@
   (let [profile-id  (:profile-id @st/state)
         on-nav-root (mf/use-fn #(st/emit! (rt/nav-root)))]
     [:section {:class (stl/css :exception-layout)}
-     [:button
+     [:a
       {:class (stl/css :exception-header)
-       :on-click on-nav-root}
+       :href "https://app.podconverge.com/panel/design-hub/create-project/projects"}
       [:> raw-svg* {:id "podconverge-logo-icon" :class (stl/css :podconverge-logo)}]
       (when profile-id
         [:div {:class (stl/css :go-back-wrapper)}
          [:> icon* {:icon-id "arrow" :class (stl/css :back-arrow)}] [:span (tr "not-found.no-permission.go-dashboard")]])]
      [:div {:class (stl/css :deco-before)} i/logo-error-screen]
      (when-not profile-id
-       [:button {:class (stl/css :login-header)
-                 :on-click on-nav-root}
+       [:a {:class (stl/css :login-header)
+                 :href "https://app.podconverge.com/panel/design-hub/create-project/projects"}
         (tr "labels.login")])
 
      [:div {:class (stl/css :exception-content)}

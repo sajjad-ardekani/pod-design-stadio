@@ -97,7 +97,8 @@
             :class (stl/css :project-tree)}
       [:div
        {:class (stl/css :project-name)
-        :on-click nav-to-project}
+;;         :on-click nav-to-project
+        }
        (:name project)]
       (if ^boolean editing?
         [:input
