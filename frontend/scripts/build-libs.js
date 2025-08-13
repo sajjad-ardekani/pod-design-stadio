@@ -50,11 +50,11 @@ const config = {
     js: '"use strict";',
   },
   outfile: "resources/public/js/libs.js",
-  loader: {
-    ".svg": "dataurl",
-    ".css": "text",
-  },
-  plugins: [fixReactVirtualized, redirectPluginsRuntime, rebuildNotify],
+  // loader: {
+  //   ".svg": "dataurl",
+  //   ".css": "text",
+  // },
+  plugins: [fixReactVirtualized, rebuildNotify],
 };
 
 async function watch() {

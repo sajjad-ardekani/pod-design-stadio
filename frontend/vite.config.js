@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import { configDefaults } from "vitest/config";
-import { resolve } from "path";
+// import { resolve } from "path";
 
 export default defineConfig({
   test: {
@@ -10,10 +10,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@target": resolve(__dirname, "./target/storybook"),
-      "@penpot/plugins-runtime": resolve(
-        __dirname,
-        "vendor/penpot-plugins/libs/plugins-runtime"
-      ),
+      // "@penpot/plugins-runtime": resolve(
+      //   __dirname,
+      //   "vendor/penpot-plugins/libs/plugins-runtime"
+      // ),
     },
   },
   optimizeDeps: {
