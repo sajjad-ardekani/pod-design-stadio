@@ -984,14 +984,19 @@
             (if keep-touched?
               (clv/generate-keep-touched changes new-shape shape orig-shapes page libraries ldata)
               [changes []])
-            all-parents (into all-parents parents-of-swapped)]
+            all-parents (-> all-parents
+                            (into parents-of-swapped)
+                            (conj (:id new-shape)))]
 
-        (rx/of
-         (dwu/start-undo-transaction undo-id)
-         (dch/commit-changes changes)
-         (dws/select-shape (:id new-shape) true)
-         (ptk/data-event :layout/update {:ids all-parents :undo-group undo-group})
-         (dwu/commit-undo-transaction undo-id))))))
+        (rx/merge
+         (rx/of
+          (dwu/start-undo-transaction undo-id)
+          (dch/commit-changes changes)
+          (ptk/data-event :layout/update {:ids all-parents :undo-group undo-group})
+          (dwu/commit-undo-transaction undo-id)
+          (dws/deselect-all))
+         (->> (rx/of (dws/select-shape (:id new-shape) false))
+              (rx/delay 1)))))))
 
 (defn component-multi-swap
   "Swaps several components with another one"

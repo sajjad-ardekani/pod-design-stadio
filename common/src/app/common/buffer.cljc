@@ -21,6 +21,13 @@
     (let [target (with-meta target {:tag 'java.nio.ByteBuffer})]
       `(long (.get ~target ~offset)))))
 
+(defmacro read-unsigned-byte
+  [target offset]
+  (if (:ns &env)
+    `(.getUint8 ~target ~offset true)
+    (let [target (with-meta target {:tag 'java.nio.ByteBuffer})]
+      `(bit-and (long (.get ~target ~offset)) 0xff))))
+
 (defmacro read-bool
   [target offset]
   (if (:ns &env)
@@ -119,6 +126,12 @@
          (.putLong ~target (+ ~offset 8) (.getLeastSignificantBits ~value))
          (finally
            (.order ~target ByteOrder/LITTLE_ENDIAN))))))
+
+(defn wrap
+  [data]
+  #?(:clj  (let [buffer (ByteBuffer/wrap ^bytes data)]
+             (.order buffer ByteOrder/LITTLE_ENDIAN))
+     :cljs (new js/DataView (.-buffer ^js data))))
 
 (defn allocate
   [size]

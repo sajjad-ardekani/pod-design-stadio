@@ -30,6 +30,7 @@
    [app.main.store :as st]
    [beicon.v2.core :as rx]
    [clojure.set :as set]
+   [cuerdas.core :as str]
    [potok.v2.core :as ptk]))
 
 (declare token-properties)
@@ -284,7 +285,9 @@
 (defn update-font-family
   ([value shape-ids attributes] (update-font-family value shape-ids attributes nil))
   ([value shape-ids _attributes page-id]
-   (let [font-family (first value)
+   (let [font-family (-> (first value)
+                         ;; Strip quotes around font-family like `"Inter"`
+                         (str/trim #"[\"']"))
          font (some-> font-family
                       (fonts/find-font-family))
          text-attrs (if font
@@ -306,6 +309,49 @@
   ([value shape-ids _attributes page-id]
    (when (string? value)
      (generate-text-shape-update {:text-transform value} shape-ids page-id))))
+
+(defn update-text-decoration
+  ([value shape-ids attributes] (update-text-decoration value shape-ids attributes nil))
+  ([value shape-ids _attributes page-id]
+   (when (ctt/valid-text-decoration value)
+     (let [css-value (case value
+                       "strike-through" "line-through"
+                       value)]
+       (generate-text-shape-update {:text-decoration css-value} shape-ids page-id)))))
+
+(defn update-text-decoration-interactive
+  ([value shape-ids attributes] (update-text-decoration-interactive value shape-ids attributes nil))
+  ([value shape-ids attributes page-id]
+   (when (ctt/valid-text-decoration value)
+     (st/emit! (ptk/data-event :expand-text-more-options))
+     (update-text-decoration value shape-ids attributes page-id))))
+
+(defn- generate-font-weight-text-shape-update
+  [font-variant shape-ids page-id]
+  (let [update-node? (fn [node]
+                       (or (txt/is-text-node? node)
+                           (txt/is-paragraph-node? node)))
+        update-fn (fn [node _]
+                    (let [font (fonts/get-font-data (:font-id node))
+                          font-variant-id (or
+                                           (fonts/find-variant font font-variant)
+                                           ;; When variant with matching weight but not with matching style (italic) is found, use that one
+                                           (fonts/find-variant font (dissoc font-variant :style)))]
+                      (if font-variant-id
+                        (-> node
+                            (d/txt-merge (assoc font-variant :font-variant-id (:id font-variant-id)))
+                            (cty/remove-typography-from-node))
+                        node)))]
+    (dwsh/update-shapes shape-ids
+                        #(txt/update-text-content % update-node? update-fn nil)
+                        {:ignore-touched true
+                         :page-id page-id})))
+
+(defn update-font-weight
+  ([value shape-ids attributes] (update-font-weight value shape-ids attributes nil))
+  ([value shape-ids _attributes page-id]
+   (when-let [font-variant (ctt/valid-font-weight-variant value)]
+     (generate-font-weight-text-shape-update font-variant shape-ids page-id))))
 
 ;; Events to apply / unapply tokens to shapes ------------------------------------------------------------
 
@@ -341,9 +387,12 @@
                                       [])
 
                         resolved-value (get-in resolved-tokens [(cft/token-identifier token) :resolved-value])
-                        tokenized-attributes (cft/attributes-map attributes token)]
+                        tokenized-attributes (cft/attributes-map attributes token)
+                        type (:type token)]
                     (rx/of
-                     (st/emit! (ptk/event ::ev/event {::ev/name "apply-tokens"}))
+                     (st/emit! (ev/event {::ev/name "apply-tokens"
+                                          :type type
+                                          :applyed-to attributes}))
                      (dwu/start-undo-transaction undo-id)
                      (dwsh/update-shapes shape-ids (fn [shape]
                                                      (cond-> shape
@@ -480,6 +529,22 @@
     :modal {:key :tokens/text-case
             :fields [{:label "Text Case"
                       :key :text-case}]}}
+
+   :font-weight
+   {:title "Font Weight"
+    :attributes ctt/font-weight-keys
+    :on-update-shape update-font-weight
+    :modal {:key :tokens/font-weight
+            :fields [{:label "Font Weight"
+                      :key :font-weight}]}}
+
+   :text-decoration
+   {:title "Text Decoration"
+    :attributes ctt/text-decoration-keys
+    :on-update-shape update-text-decoration-interactive
+    :modal {:key :tokens/text-decoration
+            :fields [{:label "Text Decoration"
+                      :key :text-decoration}]}}
 
    :stroke-width
    {:title "Stroke Width"

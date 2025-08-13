@@ -271,6 +271,8 @@
         font-family (partial generic-attribute-actions #{:font-family} "Font Family")
         line-height #(generic-attribute-actions #{:line-height} "Line Height" (assoc % :on-update-shape dwta/update-line-height))
         text-case (partial generic-attribute-actions #{:text-case} "Text Case")
+        text-decoration (partial generic-attribute-actions #{:text-decoration} "Text Decoration")
+        font-weight (partial generic-attribute-actions #{:font-weight} "Font Weight")
         border-radius (partial all-or-separate-actions {:attribute-labels {:r1 "Top Left"
                                                                            :r2 "Top Right"
                                                                            :r4 "Bottom Left"
@@ -298,6 +300,8 @@
      :line-height line-height
      :letter-spacing letter-spacing
      :text-case text-case
+     :text-decoration text-decoration
+     :font-weight font-weight
      :dimensions (fn [context-data]
                    (-> (concat
                         (when (seq (sizing-attribute-actions context-data)) [{:title "Sizing" :submenu :sizing}])

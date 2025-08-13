@@ -198,7 +198,7 @@
       :type type}]))
 
 (mf/defc form*
-  [{:keys [token token-type action selected-token-set-name transform-value on-value-resolve custom-input-token-value custom-input-token-value-props]}]
+  [{:keys [token token-type action selected-token-set-name transform-value on-value-resolve custom-input-token-value custom-input-token-value-props input-value-placeholder]}]
   (let [create? (not (instance? ctob/Token token))
         token (or token {:type token-type})
         token-properties (dwta/get-token-properties token)
@@ -493,7 +493,7 @@
            {:level :warning :appearance :ghost} (tr "workspace.tokens.warning-name-change")]])]
 
       [:div {:class (stl/css :input-row)}
-       (let [placeholder (tr "workspace.tokens.token-value-enter")
+       (let [placeholder (or input-value-placeholder (tr "workspace.tokens.token-value-enter"))
              label (tr "workspace.tokens.token-value")
              default-value (mf/ref-val value-ref)
              ref value-input-ref
@@ -789,10 +789,21 @@
 
 (mf/defc text-case-form*
   [{:keys [token] :rest props}]
-  (let [placeholder (tr "workspace.tokens.text-case-value-enter")]
-    [:> form*
-     (mf/spread-props props {:token token
-                             :input-placeholder placeholder})]))
+  [:> form*
+   (mf/spread-props props {:token token
+                           :input-value-placeholder (tr "workspace.tokens.text-case-value-enter")})])
+
+(mf/defc text-decoration-form*
+  [{:keys [token] :rest props}]
+  [:> form*
+   (mf/spread-props props {:token token
+                           :input-value-placeholder (tr "workspace.tokens.text-decoration-value-enter")})])
+
+(mf/defc font-weight-form*
+  [{:keys [token] :rest props}]
+  [:> form*
+   (mf/spread-props props {:token token
+                           :input-value-placeholder (tr "workspace.tokens.font-weight-value-enter")})])
 
 (mf/defc form-wrapper*
   [{:keys [token token-type] :as props}]
@@ -801,4 +812,6 @@
       :color [:> color-form* props]
       :font-family [:> font-family-form* props]
       :text-case [:> text-case-form* props]
+      :text-decoration [:> text-decoration-form* props]
+      :font-weight [:> font-weight-form* props]
       [:> form* props])))

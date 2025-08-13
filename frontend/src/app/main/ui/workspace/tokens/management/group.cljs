@@ -31,6 +31,8 @@
     :font-size "text-font-size"
     :letter-spacing "text-letterspacing"
     :text-case "text-mixed"
+    :text-decoration "text-underlined"
+    :font-weight "text-font-weight"
     :opacity "percentage"
     :number "number"
     :rotation "rotation"
@@ -93,7 +95,7 @@
          (mf/deps selected-shapes not-editing?)
          (fn [event token]
            (dom/stop-propagation event)
-           (when (and not-editing? (seq selected-shapes))
+           (when (and not-editing? (seq selected-shapes) (not= (:type token) :number))
              (st/emit! (dwta/toggle-token {:token token
                                            :shapes selected-shapes})))))]
 

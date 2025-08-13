@@ -12,6 +12,7 @@
    [app.common.logging :as l]
    [app.common.schema :as sm]
    [app.common.time :as ct]
+   [app.common.types.token :as ctt]
    [app.common.types.tokens-lib :as ctob]
    [app.main.data.tinycolor :as tinycolor]
    [app.main.data.workspace.tokens.errors :as wte]
@@ -132,7 +133,6 @@
 
           :else {:errors [(wte/error-with-value :error.style-dictionary/invalid-token-value value)]})))
 
-
 (defn- parse-sd-token-stroke-width-value
   "Parses `value` of a dimensions `sd-token` into a map like `{:value 1 :unit \"px\"}`.
   If the `value` is not parseable and/or has missing references returns a map with `:errors`.
@@ -157,6 +157,15 @@
 
       :else {:errors [(wte/error-with-value :error.style-dictionary/invalid-token-value value)]})))
 
+(defn- parse-sd-token-letter-spacing-value
+  "Parses `value` of a text-case `sd-token` into a map like `{:value \"1\"}`.
+  If the `value` is not parseable and/or has missing references returns a map with `:errors`."
+  [value]
+  (let [parsed-value (parse-sd-token-general-value value)]
+    (if (= (:unit parsed-value) "%")
+      {:errors [(wte/error-with-value :error.style-dictionary/value-with-percent value)]}
+      parsed-value)))
+
 (defn- parse-sd-token-text-case-value
   "Parses `value` of a text-case `sd-token` into a map like `{:value \"uppercase\"}`.
   If the `value` is not parseable and/or has missing references returns a map with `:errors`."
@@ -174,6 +183,40 @@
 
       :else
       {:errors [(wte/error-with-value :error.style-dictionary/invalid-token-value-text-case value)]})))
+
+(defn- parse-sd-token-text-decoration-value
+  "Parses `value` of a text-decoration `sd-token` into a map like `{:value \"underline\"}`.
+  If the `value` is not parseable and/or has missing references returns a map with `:errors`."
+  [value]
+  (let [valid-text-decoration (ctt/valid-text-decoration value)
+        references (seq (ctob/find-token-value-references value))]
+    (cond
+      valid-text-decoration
+      {:value valid-text-decoration}
+
+      references
+      {:errors [(wte/error-with-value :error.style-dictionary/missing-reference references)]
+       :references references}
+
+      :else
+      {:errors [(wte/error-with-value :error.style-dictionary/invalid-token-value-text-decoration value)]})))
+
+(defn- parse-sd-token-font-weight-value
+  "Parses `value` of a font-weight `sd-token` into a map like `{:value \"700\"}` or `{:value \"700 Italic\"}`.
+  If the `value` is not parseable and/or has missing references returns a map with `:errors`."
+  [value]
+  (let [valid-font-weight (ctt/valid-font-weight-variant value)
+        references (seq (ctob/find-token-value-references value))]
+    (cond
+      valid-font-weight
+      {:value value}
+
+      references
+      {:errors [(wte/error-with-value :error.style-dictionary/missing-reference references)]
+       :references references}
+
+      :else
+      {:errors [(wte/error-with-value :error.style-dictionary/invalid-token-value-font-weight value)]})))
 
 (defn process-sd-tokens
   "Converts a StyleDictionary dictionary with resolved tokens (aka `sd-tokens`) back to clojure.
@@ -218,6 +261,9 @@
                                 :opacity (parse-sd-token-opacity-value value has-references?)
                                 :stroke-width (parse-sd-token-stroke-width-value value has-references?)
                                 :text-case (parse-sd-token-text-case-value value)
+                                :letter-spacing (parse-sd-token-letter-spacing-value value)
+                                :text-decoration (parse-sd-token-text-decoration-value value)
+                                :font-weight (parse-sd-token-font-weight-value value)
                                 :number (parse-sd-token-number-value value)
                                 (parse-sd-token-general-value value))
            output-token (cond (:errors parsed-token-value)

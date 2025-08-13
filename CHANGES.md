@@ -10,17 +10,19 @@
 
 ### :sparkles: New features & Enhancements
 - Add defaults for artboard drawing [Taiga #494](https://tree.taiga.io/project/penpot/us/494?milestone=465047)
-
-- Continuous display of distances between elements when moving a layer with the keyboard [Taiga #1780](https://tree.taiga.io/project/penpot/issue/1780)
+- Continuous display of distances between elements when moving a layer with the keyboard [Taiga #1780](https://tree.taiga.io/project/penpot/us/1780)
 
 ### :bug: Bugs fixed
-- Display strokes information in inspect tab [Taiga #11154](https://tree.taiga.io/project/penpot/issue/11154)
 
+- Display strokes information in inspect tab [Taiga #11154](https://tree.taiga.io/project/penpot/issue/11154)
 - Fix problem with booleans selection [Taiga #11627](https://tree.taiga.io/project/penpot/issue/11627)
 - Fix missing font when copy&paste a chunk of text [Taiga #11522](https://tree.taiga.io/project/penpot/issue/11522)
 - Fix bad swap slot after two swaps [Taiga #11659](https://tree.taiga.io/project/penpot/issue/11659)
-- Fix missing package for the penport_exporter Docker image [GitHub #7205](https://github.com/penpot/penpot/issues/7025)
+- Fix missing package for the `penpot_exporter` Docker image [GitHub #7205](https://github.com/penpot/penpot/issues/7025)
 - Fix issue where multiple dropdown menus could be opened simultaneously on the dashboard page [Taiga #11500](https://tree.taiga.io/project/penpot/issue/11500)
+- Fix font size/variant not updated when editing a text [Taiga #11552](https://tree.taiga.io/project/penpot/issue/11552)
+- Fix issue where Alt + arrow keys shortcut interferes with letter-spacing when moving text layers [Taiga #11552](https://tree.taiga.io/project/penpot/issue/11771)
+- Fix consistency issues on how font variants are visualized [Taiga #11499](https://tree.taiga.io/project/penpot/us/11499)
 
 ## 2.9.0 (Unreleased)
 
@@ -49,6 +51,7 @@
 - Improve text layer auto-resize: auto-width switches to auto-height on horizontal resize, and only switches to fixed on vertical resize [Taiga #11578](https://tree.taiga.io/project/penpot/issue/11578)
 - Add the ability to show login dialog on profile settings [Github #6871](https://github.com/penpot/penpot/pull/6871)
 - Improve the application of tokens with object specific tokens [Taiga #10209](https://tree.taiga.io/project/penpot/us/10209)
+- Add info to apply-token event [Taiga #11710](https://tree.taiga.io/project/penpot/task/11710)
 
 ### :bug: Bugs fixed
 
@@ -75,8 +78,11 @@
 - Fix the context menu always closes after any action [Taiga #11624](https://tree.taiga.io/project/penpot/issue/11624)
 - Fix X & Y position do not sincronize with tokens [Taiga #11617](https://tree.taiga.io/project/penpot/issue/11617)
 - Fix tooltip position after first time [Taiga #11688](https://tree.taiga.io/project/penpot/issue/11688)
+- Fix inconsistent ordering of pinned projects on dashboard sidebar [Taiga #11674](https://tree.taiga.io/project/penpot/issue/11674)
 - Fix export button width on inspect tab [Taiga #11394](https://tree.taiga.io/project/penpot/issue/11394)
 - Fix stroke width token application [Taiga #11724](https://tree.taiga.io/project/penpot/issue/11724)
+- Fix number token application on shape [Taiga #11331](https://tree.taiga.io/project/penpot/task/11331)
+- Fix auto height is fixed in the HTML inspect tab for text elements [Taiga #11680](https://tree.taiga.io/project/penpot/task/11680)
 
 ## 2.8.1
 

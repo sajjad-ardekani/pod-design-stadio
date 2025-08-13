@@ -135,25 +135,27 @@
 
 
 (defn update-error
-  "Updates the error in a component"
-  [component-id value]
-  (ptk/reify ::update-error
-    ptk/WatchEvent
-    (watch [it state _]
-      (let [page-id    (:current-page-id state)
-            data       (dsh/lookup-file-data state)
-            objects    (-> (dsh/get-page data page-id)
-                           (get :objects))
+  "Sets or unsets an error for a component"
+  ([component-id]
+   (update-error component-id nil))
+  ([component-id value]
+   (ptk/reify ::update-error
+     ptk/WatchEvent
+     (watch [it state _]
+       (let [page-id    (:current-page-id state)
+             data       (dsh/lookup-file-data state)
+             objects    (-> (dsh/get-page data page-id)
+                            (get :objects))
 
-            changes    (-> (pcb/empty-changes it page-id)
-                           (pcb/with-library-data data)
-                           (pcb/with-objects objects)
-                           (clvp/generate-set-variant-error component-id value))
-            undo-id    (js/Symbol)]
-        (rx/of
-         (dwu/start-undo-transaction undo-id)
-         (dch/commit-changes changes)
-         (dwu/commit-undo-transaction undo-id))))))
+             changes    (-> (pcb/empty-changes it page-id)
+                            (pcb/with-library-data data)
+                            (pcb/with-objects objects)
+                            (clvp/generate-set-variant-error component-id value))
+             undo-id    (js/Symbol)]
+         (rx/of
+          (dwu/start-undo-transaction undo-id)
+          (dch/commit-changes changes)
+          (dwu/commit-undo-transaction undo-id)))))))
 
 
 (defn remove-property
@@ -341,8 +343,8 @@
   "Given the id of a main shape of a component, creates a variant structure for
    that component"
   ([main-instance-id]
-   (transform-in-variant main-instance-id nil nil [] true true))
-  ([main-instance-id variant-id delta prefix duplicate? flex?]
+   (transform-in-variant main-instance-id nil nil [] false true true))
+  ([main-instance-id variant-id delta prefix add-wrapper? duplicate? flex?]
    (ptk/reify ::transform-in-variant
      ptk/WatchEvent
      (watch [_ state _]
@@ -354,8 +356,11 @@
              main         (get objects main-instance-id)
              parent       (get objects (:parent-id main))
              component-id (:component-id main)
+             name         (if add-wrapper?
+                            (str "Component/" (:name main))
+                            (:name main))
              ;; If there is a prefix, set is as first item of path
-             cpath (-> (:name main)
+             cpath (-> name
                        cfh/split-path
                        (cond->
                         (seq prefix)
@@ -578,6 +583,8 @@
                      prefix        (->> shapes
                                         (mapv #(cfh/split-path (:name %)))
                                         (common-prefix))
+                     ;; When the common parent is root, add a wrapper
+                     add-wrapper?  (= prefix [])
                      first-shape   (first shapes)
                      delta         (gpt/point (- (:x rect) (:x first-shape) 30)
                                               (- (:y rect) (:y first-shape) 30))
@@ -596,7 +603,7 @@
                    (when  (and page-id (not= current-page page-id))
                      (dcm/go-to-workspace :page-id page-id))
                    (dwu/start-undo-transaction undo-id)
-                   (transform-in-variant (first selected) variant-id delta prefix false false)
+                   (transform-in-variant (first selected) variant-id delta prefix add-wrapper? false false)
                    (dwsh/relocate-shapes (into #{} (-> selected rest reverse)) variant-id 0)
                    (dwt/update-dimensions [variant-id] :width (+ (:width rect) 60))
                    (dwt/update-dimensions [variant-id] :height (+ (:height rect) 60))

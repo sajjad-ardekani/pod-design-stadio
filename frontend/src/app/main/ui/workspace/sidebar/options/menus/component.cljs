@@ -339,7 +339,7 @@
            (let [value (d/nilv (str/trim value) "")]
              (doseq [id component-ids]
                (st/emit! (dwv/update-property-value id pos value))
-               (st/emit! (dwv/update-error id nil))))))
+               (st/emit! (dwv/update-error id))))))
 
         update-property-name
         (mf/use-fn
@@ -359,6 +359,7 @@
          [:*
           [:div {:class (stl/css :variant-property-name-wrapper)}
            [:> input-with-meta* {:value (:name prop)
+                                 :is-editing (:editing? (meta prop))
                                  :max-length ctv/property-max-length
                                  :data-position pos
                                  :on-blur update-property-name}]]
@@ -762,7 +763,7 @@
   [{:keys [shapes swap-opened?]}]
   (let [current-file-id (mf/use-ctx ctx/current-file-id)
 
-        libraries       (deref refs/files)
+        libraries       (mf/deref refs/files)
         current-file    (get libraries current-file-id)
 
 
@@ -995,7 +996,8 @@
         menu-open?         (deref menu-open*)
 
         menu-entries       [{:title (tr "workspace.shape.menu.add-variant-property")
-                             :action #(st/emit! (dwv/add-new-property variant-id {:property-value "Value 1"}))}
+                             :action #(st/emit! (dwv/add-new-property variant-id {:property-value "Value 1"
+                                                                                  :editing? true}))}
                             {:title (tr "workspace.shape.menu.add-variant")
                              :action #(st/emit! (dwv/add-new-variant (:id shape)))}]
 
@@ -1101,14 +1103,16 @@
           [:div {:class (stl/css :variant-property-list)}
            (for [[pos property] (map-indexed vector properties)]
              (let [last-prop? (<= (count properties) 1)
-                   meta       (->> (:value property)
+                   values     (->> (:value property)
                                    (move-empty-items-to-end)
                                    (replace {"" "--"})
-                                   (str/join ", "))]
+                                   (str/join ", "))
+                   is-editing (:editing? (meta property))]
                [:div {:key (str (:id shape) pos)
                       :class (stl/css :variant-property-row)}
                 [:> input-with-meta* {:value (:name property)
-                                      :meta meta
+                                      :meta values
+                                      :is-editing is-editing
                                       :max-length ctv/property-max-length
                                       :data-position pos
                                       :on-blur update-property-name}]

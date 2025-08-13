@@ -4411,11 +4411,6 @@ msgstr "Subscription"
 msgid "subscription.settings.add-payment-to-continue"
 msgstr "Add a payment method to continue after your trial"
 
-#: src/app/main/ui/settings/subscription.cljs:82, src/app/main/ui/settings/subscription.cljs:115, src/app/main/ui/settings/subscription.cljs:127
-#, fuzzy, unused
-msgid "subscription.settings.benefits.all-professiona-benefits"
-msgstr ""
-
 #: src/app/main/ui/settings/subscription.cljs:247, src/app/main/ui/settings/subscription.cljs:268, src/app/main/ui/settings/subscription.cljs:303, src/app/main/ui/settings/subscription.cljs:317
 msgid "subscription.settings.benefits.all-professional-benefits"
 msgstr "All Professional plan benefits and:"
@@ -4470,8 +4465,10 @@ msgid "subscription.settings.management.dialog.payment-explanation"
 msgstr "(No payment will be made now)"
 
 #: src/app/main/ui/settings/subscription.cljs:124
+#, markdown
 msgid "subscription.settings.management.dialog.price-month"
-msgstr "$7 per editor/month x %s"
+msgstr ""
+"**$%s** per month"
 
 #: src/app/main/ui/settings/subscription.cljs:112
 msgid "subscription.settings.management.dialog.select-editors"
@@ -4931,6 +4928,10 @@ msgstr "Text Transform"
 #: src/app/main/ui/workspace/sidebar/assets/groups.cljs:65
 msgid "workspace.assets.ungroup"
 msgstr "Ungroup"
+
+#: src/app/main/ui/workspace/sidebar/assets/groups.cljs:83
+msgid "workspace.assets.component-group-options"
+msgstr "Component group options"
 
 #: src/app/main/ui/workspace/context_menu.cljs:769
 msgid "workspace.context-menu.grid-cells.area"
@@ -5560,7 +5561,7 @@ msgid "workspace.options.component.variants-help-modal.rule3"
 msgstr "Have the same hierachy level"
 
 msgid "workspace.options.component.variants-help-modal.rule3.detail"
-msgstr "Goups, boards and layouts are considered equivalent."
+msgstr "Groups, boards and layouts are considered equivalent."
 
 msgid "workspace.options.component.variants-help-modal.outro"
 msgstr "Changing any of these (e.g., renaming or grouping a layer) breaks the connection, but reverting the change will restore it."
@@ -7284,11 +7285,27 @@ msgstr "There are no tokens, themes or sets to export."
 
 #: src/app/main/ui/workspace/tokens/management/create/form.cljs:602
 msgid "workspace.tokens.text-case-value-enter"
-msgstr "Enter text case: none | Uppercase | Lowercase | Capitalize"
+msgstr "Enter: none | uppercase | lowercase | capitalize or {alias}"
 
 #: src/app/main/ui/workspace/tokens/management/create/form.cljs:109
 msgid "workspace.tokens.invalid-text-case-token-value"
 msgstr "Invalid token value: only none, Uppercase, Lowercase or Capitalize are accepted"
+
+#: src/app/main/ui/workspace/tokens/management/create/form.cljs:799
+msgid "workspace.tokens.text-decoration-value-enter"
+msgstr "Enter text decoration: none | underline | strike-through"
+
+#: src/app/main/ui/workspace/tokens/management/create/form.cljs:109
+msgid "workspace.tokens.invalid-font-weight-token-value"
+msgstr "Invalid font weight value: use numeric values (100-950) or standard names (thin, light, regular, bold, etc.) optionally followed by 'Italic'"
+
+#: src/app/main/ui/workspace/tokens/management/create/form.cljs:602
+msgid "workspace.tokens.font-weight-value-enter"
+msgstr "Enter: 400, Bold, 700 Italic, or {alias}"
+
+#: src/app/main/ui/workspace/tokens/management/create/form.cljs:81
+msgid "workspace.tokens.invalid-text-decoration-token-value"
+msgstr "Invalid token value: only none, underline and strike-through are accepted"
 
 #: src/app/main/ui/workspace/tokens/modals/export.cljs:33
 msgid "workspace.tokens.export.preview"
@@ -7601,9 +7618,17 @@ msgstr "Type '%s' is not supported (%s)\n"
 msgid "workspace.tokens.value-not-valid"
 msgstr "The value is not valid"
 
+#: src/app/main/ui/workspace/tokens/token_pill.cljs
+msgid "workspace.tokens.more-options"
+msgstr "Right click to see options"
+
 #: src/app/main/data/workspace/tokens/errors.cljs:61
 msgid "workspace.tokens.value-with-units"
 msgstr "Invalid value: Units are not allowed."
+
+#: src/app/main/data/workspace/tokens/errors.cljs:61
+msgid "workspace.tokens.value-with-percent"
+msgstr "Invalid value: % is not allowed."
 
 #: src/app/main/ui/workspace/tokens/form.cljs:555
 msgid "workspace.tokens.warning-name-change"

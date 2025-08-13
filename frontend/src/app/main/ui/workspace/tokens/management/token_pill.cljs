@@ -126,7 +126,9 @@
 
         base-title (dm/str "Token: " name "\n"
                            (tr "workspace.tokens.original-value" value) "\n"
-                           (tr "workspace.tokens.resolved-value" resolved-value))]
+                           (tr "workspace.tokens.resolved-value" resolved-value)
+                           (when (= (:type token) :number)
+                             (dm/str "\n" (tr "workspace.tokens.more-options"))))]
 
     (cond
       ;; If there are errors, show the appropriate message
@@ -176,7 +178,7 @@
          selected-shapes)))
 
 (def token-types-with-status-icon
-  #{:color :border-radius :rotation :sizing :dimensions :opacity :spacing :stroke-width :text-case})
+  #{:color :border-radius :rotation :sizing :dimensions :opacity :spacing :stroke-width})
 
 (mf/defc token-pill*
   {::mf/wrap [mf/memo]}

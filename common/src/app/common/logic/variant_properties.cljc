@@ -27,7 +27,12 @@
     (reduce (fn [changes component]
               (pcb/update-component
                changes (:id component)
-               #(assoc-in % [:variant-properties pos :name] new-name)
+               (fn [component]
+                 (d/update-in-when component [:variant-properties pos]
+                                   (fn [property]
+                                     (-> property
+                                         (assoc :name new-name)
+                                         (with-meta nil)))))
                {:apply-changes-local-library? true}))
             changes
             related-components)))
@@ -71,13 +76,13 @@
         component (ctcl/get-component data component-id true)
         main-id   (:main-instance-id component)]
     (-> changes
-        (pcb/update-shapes [main-id] (if (str/blank? value)
+        (pcb/update-shapes [main-id] (if (nil? value)
                                        #(dissoc % :variant-error)
                                        #(assoc % :variant-error value))))))
 
 
 (defn generate-add-new-property
-  [changes variant-id & {:keys [fill-values? property-name property-value]}]
+  [changes variant-id & {:keys [fill-values? editing? property-name property-value]}]
   (let [data               (pcb/get-library-data changes)
         objects            (pcb/get-objects changes)
         related-components (cfv/find-variant-components data objects variant-id)
@@ -89,15 +94,18 @@
         prop-names         (mapv :name props)
         property-name      (ctv/update-number-in-repeated-item prop-names property-name)
 
+        mdata              (if editing? {:editing? true} nil)
+
         [_ changes]
         (reduce (fn [[num changes] component]
                   (let [main-id      (:main-instance-id component)
 
                         update-props #(-> (d/nilv % [])
-                                          (conj {:name property-name
-                                                 :value (cond fill-values?   (str ctv/value-prefix num)
-                                                              property-value property-value
-                                                              :else          "")}))
+                                          (conj (with-meta {:name property-name
+                                                            :value (cond fill-values?   (str ctv/value-prefix num)
+                                                                         property-value property-value
+                                                                         :else          "")}
+                                                  mdata)))
 
                         update-name #(cond fill-values?   (if (str/empty? %)
                                                             (str ctv/value-prefix num)
@@ -164,6 +172,10 @@
         objects        (pcb/get-objects changes)
         variant-id     (:id variant-container)
 
+        num-shapes     (->> variant-container
+                            :shapes
+                            count)
+
         ;; If we are cut-pasting a variant-container, this will be null
         ;; because it hasn't any shapes yet
         first-comp-id  (->> variant-container
@@ -190,7 +202,7 @@
                                0
                                shapes)
 
-        num-new-props  (if (or (zero? num-base-props)
+        num-new-props  (if (or (zero? num-shapes)
                                (< total-props num-base-props))
                          0
                          (- total-props num-base-props))
@@ -205,7 +217,7 @@
     (reduce
      (fn [changes shape]
        (let [component (ctcl/get-component data (:component-id shape) true)]
-         (if (or (zero? num-base-props)                  ;; do nothing if there are no base props
+         (if (or (zero? num-shapes)                      ;; do nothing if there are no shapes
                  (and (= variant-id (:variant-id shape)) ;; or we are only moving the shape inside its parent (it is
                       (not (:deleted component))))       ;; the same parent and the component isn't deleted)
            changes

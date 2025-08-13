@@ -35,7 +35,7 @@
                 (some? image)
                 (types.fills.impl/write-image-fill offset dview opacity image))
 
-              (+ offset types.fills.impl/FILL-BYTE-SIZE)))
+              (+ offset types.fills.impl/FILL-U8-SIZE)))
           current-offset
           fills))
 
@@ -51,7 +51,7 @@
         num-leaves (count leaves)
         paragraph-attr-size 48
         total-fills (total-fills-count leaves)
-        total-fills-size (* types.fills.impl/FILL-BYTE-SIZE total-fills)
+        total-fills-size (* types.fills.impl/FILL-U8-SIZE total-fills)
         leaf-attr-size 56
         metadata-size (+ paragraph-attr-size (* num-leaves leaf-attr-size) total-fills-size)
         text-buffer (utf8->buffer text)
@@ -137,7 +137,7 @@
 
     ;; Allocate memory and set buffer
     (let [total-size (.-byteLength buffer)
-          metadata-offset (mem/alloc-bytes total-size)
+          metadata-offset (mem/alloc total-size)
           heap (mem/get-heap-u8)]
       (.set heap (js/Uint8Array. buffer) metadata-offset)))
 
@@ -189,8 +189,12 @@
    :modi        #"[\u11600-\u1165F]"
    :sora-sompeng #"[\u110D0-\u110FF]"
    :bamum       #"[\uA6A0-\uA6FF]"
-   :meroitic    #"[\u10980-\u1099F]"})
-
+   :meroitic    #"[\u10980-\u1099F]"
+   ;; Arrows, Mathematical Operators, Misc Technical, Geometric Shapes, Misc Symbols, Dingbats, Supplemental Arrows, etc.
+   :symbols     #"[\u2190-\u21FF\u2200-\u22FF\u2300-\u23FF\u25A0-\u25FF\u2600-\u26FF\u2700-\u27BF\u2B00-\u2BFF]"
+  ;; Additional arrows, math, technical, geometric, and symbol blocks
+   :symbols-2     #"[\u2190-\u21FF\u2200-\u22FF\u2300-\u23FF\u25A0-\u25FF\u2600-\u26FF\u2700-\u27BF\u2B00-\u2BFF]"
+   :music     #"[\u2669-\u267B\u1D100-\u1D1FF]"})
 
 (defn contains-emoji? [text]
   (boolean (some #(re-find emoji-pattern %) (seq text))))
