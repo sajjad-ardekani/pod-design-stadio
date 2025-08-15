@@ -94,10 +94,6 @@
   []
   (reset! registry (get-in @st/state [:profile :props :plugins] {})))
 
-(defn init
-  []
-  (load-from-store))
-
 (defn install-plugin!
   [plugin]
   (letfn [(update-ids [ids]
@@ -108,22 +104,6 @@
                          (update :ids update-ids)
                          (update :data assoc (:plugin-id plugin) plugin)))
     (save-to-store)))
-
-(defn remove-plugin!
-  [{:keys [plugin-id]}]
-  (letfn [(update-ids [ids]
-            (->> ids
-                 (remove #(= % plugin-id))))]
-    (swap! registry #(-> %
-                         (update :ids update-ids)
-                         (update :data dissoc plugin-id)))
-    (save-to-store)))
-
-(defn check-permission
-  [plugin-id permission]
-  (or (= plugin-id "TEST")
-      (let [{:keys [permissions]} (dm/get-in @registry [:data plugin-id])]
-        (contains? permissions permission))))
 
 ;; Define a predicate that returns true when the workspace is loaded.
 (defn app-loaded? []
@@ -167,3 +147,18 @@
   (load-from-store)
   (auto-install-and-open-default-plugin))
 
+(defn remove-plugin!
+  [{:keys [plugin-id]}]
+  (letfn [(update-ids [ids]
+            (->> ids
+                 (remove #(= % plugin-id))))]
+    (swap! registry #(-> %
+                         (update :ids update-ids)
+                         (update :data dissoc plugin-id)))
+    (save-to-store)))
+
+(defn check-permission
+  [plugin-id permission]
+  (or (= plugin-id "TEST")
+      (let [{:keys [permissions]} (dm/get-in @registry [:data plugin-id])]
+        (contains? permissions permission))))
