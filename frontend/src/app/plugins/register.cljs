@@ -113,7 +113,6 @@
 (def default-plugin-manifest-url
   "https://plugin.podconverge.com/manifest.json")
 
-
 (defn auto-install-and-open-default-plugin []
   "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded.
    Aborts the fetch if it doesn't complete within `timeout-ms`."
