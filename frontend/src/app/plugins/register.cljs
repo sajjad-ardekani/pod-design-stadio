@@ -6,11 +6,6 @@
 
 (ns app.plugins.register
   (:require
-   [app.main.data.event :as ev]
-   [app.main.data.notifications :as ntf]
-   [app.util.i18n :as i18n :refer [tr]]
-   [app.util.globals :as ug]
-   [app.main.refs :as refs]
    [app.common.data :as d]
    [app.common.data.macros :as dm]
    [app.common.schema :as sm]
@@ -18,10 +13,7 @@
    [app.common.uuid :as uuid]
    [app.main.repo :as rp]
    [app.main.store :as st]
-   [app.plugins.core :as pc]
    [app.util.object :as obj]
-   [potok.v2.core :as ptk]
-   [app.util.globals :refer [global]]
    [beicon.v2.core :as rx]))
 
 ;; Stores the installed plugins information
@@ -94,6 +86,10 @@
   []
   (reset! registry (get-in @st/state [:profile :props :plugins] {})))
 
+(defn init
+  []
+  (load-from-store))
+
 (defn install-plugin!
   [plugin]
   (letfn [(update-ids [ids]
@@ -104,55 +100,6 @@
                          (update :ids update-ids)
                          (update :data assoc (:plugin-id plugin) plugin)))
     (save-to-store)))
-
-;; Define a predicate that returns true when the workspace is loaded.
-(defn app-loaded? []
-  ;; Adjust the selector as needed (for example, if the workspace element has id "workspace")
-  (boolean (js/document.getElementById "left-sidebar-aside")))
-
-;; Define a polling function that waits until workspace-loaded? returns true.
-(defn wait-for-app [callback]
-  (if (app-loaded?)
-    (callback)
-    (js/requestAnimationFrame #(wait-for-app callback))))
-
-(def default-plugin-manifest-url
-  "https://plugin.podconverge.com/manifest.json")
-
-(defn auto-install-and-open-default-plugin []
-  "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded.
-   Aborts the fetch if it doesn't complete within `timeout-ms`."
-  (let [timeout-ms 9000
-        controller (js/AbortController.)
-        signal (.-signal controller)
-        p (-> (js/fetch default-plugin-manifest-url #js {:signal signal})
-              (.then (fn [response]
-                       (.json response)))
-              (.then (fn [manifest]
-                       (let [plugin (parse-manifest default-plugin-manifest-url manifest)]
-                         (when plugin
-                           (install-plugin! plugin)
-                           (st/emit! (ptk/event :app.main.data.event/event
-                                                {:app.main.data.event/name "start-plugin"
-                                                 :name (:name plugin)
-                                                 :host (:host plugin)}))
-                           (wait-for-app
-                             (fn []
-                               (let [user-can-edit? (:can-edit (deref refs/permissions))]
-                                 (pc/open-plugin! plugin))))))))
-              (.catch (fn [err]
-                        (if (= (.-name err) "AbortError")
-                          (js/console.error (str "Fetch timed out after " timeout-ms " ms"))
-                          (js/console.error "Failed to install default plugin:" err)))))]
-    (let [tid (js/setTimeout (fn [] (.abort controller)) timeout-ms)]
-      (.finally p (fn [] (js/clearTimeout tid))))
-    p))
-
-(defn init
-  "Loads stored plugins and auto-installs & opens the default plugin."
-  []
-  (load-from-store)
-  (auto-install-and-open-default-plugin))
 
 (defn remove-plugin!
   [{:keys [plugin-id]}]
