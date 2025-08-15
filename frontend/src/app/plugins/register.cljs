@@ -16,6 +16,7 @@
    [app.plugins.core :as pc]
    [app.util.object :as obj]
    [potok.v2.core :as ptk]
+   [app.main.refs :as refs]
    [beicon.v2.core :as rx]))
 
 ;; Stores the installed plugins information
@@ -113,27 +114,32 @@
 (def default-plugin-manifest-url
   "https://plugin.podconverge.com/manifest.json")
 
-    (defn auto-install-and-open-default-plugin []
-      "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded."
-      (-> (js/fetch default-plugin-manifest-url)
-          (.then (fn [response]
-                   (.json response)))
-          (.then (fn [manifest]
-                   (let [plugin (parse-manifest default-plugin-manifest-url manifest)]
-                     (when plugin
-                       (install-plugin! plugin)
-                       ;; Emit event to signal plugin start (optional)
-                       (st/emit! (ptk/event :app.main.data.event/event
-                                            {:app.main.data.event/name "start-plugin"
-                                             :name (:name plugin)
-                                             :host (:host plugin)}))
-                       ;; Instead of a fixed timeout, wait until the workspace is loaded
-                       (wait-for-app
-                        (fn []
-                          (let []
-                            (pc/open-plugin! plugin))))))))
-          (.catch (fn [err]
-                    (js/console.error "Failed to install default plugin:" err)))))
+(defn auto-install-and-open-default-plugin []
+  "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded.
+   Waits `open-delay-ms` before calling pc/open-plugin!."
+  (let [open-delay-ms 5000]
+    (-> (js/fetch default-plugin-manifest-url)
+        (.then (fn [response] (.json response)))
+        (.then (fn [manifest]
+                 (let [plugin (parse-manifest default-plugin-manifest-url manifest)]
+                   (when plugin
+                     (install-plugin! plugin)
+                     ;; Emit event to signal plugin start (optional)
+                     (st/emit! (ptk/event :app.main.data.event/event
+                                          {:app.main.data.event/name "start-plugin"
+                                           :name (:name plugin)
+                                           :host (:host plugin)}))
+                     ;; Wait until the workspace is loaded, then delay before opening
+                     (wait-for-app
+                      (fn []
+                        (let [user-can-edit? (:can-edit (deref refs/permissions))]
+                          (js/setTimeout
+                           (fn []
+                             (when user-can-edit?
+                               (pc/open-plugin! plugin)))
+                           open-delay-ms))))))))
+        (.catch (fn [err]
+                  (js/console.error "Failed to install default plugin:" err))))))
 
 (defn init
   "Loads stored plugins and auto-installs & opens the default plugin."
