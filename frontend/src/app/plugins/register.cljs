@@ -122,13 +122,11 @@
 (defn auto-install-and-open-default-plugin []
   "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded.
    Aborts the fetch if it doesn't complete within `timeout-ms`."
-  (let [timeout-ms 5000                               ;; adjust as needed
+  (let [timeout-ms 5000
         controller (js/AbortController.)
         signal (.-signal controller)
-        ;; create the promise chain
         p (-> (js/fetch default-plugin-manifest-url #js {:signal signal})
               (.then (fn [response]
-                       ;; if fetch succeeded before timeout, return json
                        (.json response)))
               (.then (fn [manifest]
                        (let [plugin (parse-manifest default-plugin-manifest-url manifest)]
@@ -139,17 +137,14 @@
                                                  :name (:name plugin)
                                                  :host (:host plugin)}))
                            (wait-for-app
-                            (fn []
-                              (let [user-can-edit? (:can-edit (deref refs/permissions))]
-                                (pc/open-plugin! plugin)))))))))
+                             (fn []
+                               (let [user-can-edit? (:can-edit (deref refs/permissions))]
+                                 (pc/open-plugin! plugin))))))))
               (.catch (fn [err]
-                        ;; distinguish abort (timeout) from other errors
                         (if (= (.-name err) "AbortError")
                           (js/console.error (str "Fetch timed out after " timeout-ms " ms"))
                           (js/console.error "Failed to install default plugin:" err)))))]
-    ;; start a timer that aborts the fetch if it takes too long
     (let [tid (js/setTimeout (fn [] (.abort controller)) timeout-ms)]
-      ;; clear the timeout once the chain settles (either success or any failure)
       (.finally p (fn [] (js/clearTimeout tid))))
     p))
 
