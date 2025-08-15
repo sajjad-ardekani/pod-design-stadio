@@ -91,13 +91,14 @@
         (dom/select-text! (mf/ref-val input-ref))))
 
     [:header {:class (dm/str class " " (stl/css :workspace-header-left))}
-     [:a {:href "https://app.podconverge.com/panel/projects"
+     [:a {:href "https://app.podconverge.com/panel/design-hub/create-project/projects"
           :class (stl/css :main-icon)} i/logo-icon]
      [:div {:alt (tr "workspace.sitemap")
             :class (stl/css :project-tree)}
       [:div
        {:class (stl/css :project-name)
-        :on-click nav-to-project}
+;;         :on-click nav-to-project
+        }
        (:name project)]
       (if ^boolean editing?
         [:input

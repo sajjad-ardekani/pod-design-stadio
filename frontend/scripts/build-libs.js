@@ -1,17 +1,31 @@
 import * as esbuild from "esbuild";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
+import path from "path";
 
 const filter =
   /react-virtualized[/\\]dist[/\\]es[/\\]WindowScroller[/\\]utils[/\\]onScroll\.js$/;
 
 const fixReactVirtualized = {
   name: "esbuild-plugin-react-virtualized",
-  setup({ onLoad }) {
-    onLoad({ filter }, async ({ path }) => {
+  setup({onLoad}) {
+    onLoad({filter}, async ({path}) => {
       const code = await readFile(path, "utf8");
       const broken = `import { bpfrpt_proptype_WindowScroller } from "../WindowScroller.js";`;
-      return { contents: code.replace(broken, "") };
+      return {contents: code.replace(broken, "")};
     });
+  },
+};
+
+const redirectPluginsRuntime = {
+  name: "penpot-plugins-runtime-alias",
+  setup(build) {
+    build.onResolve({filter: /^@penpot\/plugins-runtime$/}, () => ({
+      // point at the TS source entry
+      path: path.resolve(
+        process.cwd(),
+        "vendor/penpot-plugins/libs/plugins-runtime/src/index.ts"
+      ),
+    }));
   },
 };
 
@@ -36,7 +50,11 @@ const config = {
     js: '"use strict";',
   },
   outfile: "resources/public/js/libs.js",
-  plugins: [fixReactVirtualized, rebuildNotify],
+  loader: {
+    ".svg": "dataurl",
+    ".css": "text",
+  },
+  plugins: [fixReactVirtualized, redirectPluginsRuntime, rebuildNotify],
 };
 
 async function watch() {
@@ -47,6 +65,6 @@ async function watch() {
 if (process.argv.includes("--watch")) {
   await watch();
 } else {
-  const localConfig = { ...config, minify: true };
+  const localConfig = {...config, minify: true};
   await esbuild.build(localConfig);
 }
