@@ -122,7 +122,7 @@
 (defn auto-install-and-open-default-plugin []
   "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded.
    Aborts the fetch if it doesn't complete within `timeout-ms`."
-  (let [timeout-ms 5000
+  (let [timeout-ms 9000
         controller (js/AbortController.)
         signal (.-signal controller)
         p (-> (js/fetch default-plugin-manifest-url #js {:signal signal})
