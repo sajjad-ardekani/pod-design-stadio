@@ -120,26 +120,38 @@
   "https://plugin.podconverge.com/manifest.json")
 
 (defn auto-install-and-open-default-plugin []
-  "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded."
-  (-> (js/fetch default-plugin-manifest-url)
-      (.then (fn [response]
-               (.json response)))
-      (.then (fn [manifest]
-               (let [plugin (parse-manifest default-plugin-manifest-url manifest)]
-                 (when plugin
-                   (install-plugin! plugin)
-                   ;; Emit event to signal plugin start (optional)
-                   (st/emit! (ptk/event :app.main.data.event/event
-                                        {:app.main.data.event/name "start-plugin"
-                                         :name (:name plugin)
-                                         :host (:host plugin)}))
-                   ;; Instead of a fixed timeout, wait until the workspace is loaded
-                   (wait-for-app
-                    (fn []
-                      (let [user-can-edit? (:can-edit (deref refs/permissions))]
-                        (pc/open-plugin! plugin))))))))
-      (.catch (fn [err]
-                (js/console.error "Failed to install default plugin:" err)))))
+  "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded.
+   Aborts the fetch if it doesn't complete within `timeout-ms`."
+  (let [timeout-ms 5000                               ;; adjust as needed
+        controller (js/AbortController.)
+        signal (.-signal controller)
+        ;; create the promise chain
+        p (-> (js/fetch default-plugin-manifest-url #js {:signal signal})
+              (.then (fn [response]
+                       ;; if fetch succeeded before timeout, return json
+                       (.json response)))
+              (.then (fn [manifest]
+                       (let [plugin (parse-manifest default-plugin-manifest-url manifest)]
+                         (when plugin
+                           (install-plugin! plugin)
+                           (st/emit! (ptk/event :app.main.data.event/event
+                                                {:app.main.data.event/name "start-plugin"
+                                                 :name (:name plugin)
+                                                 :host (:host plugin)}))
+                           (wait-for-app
+                            (fn []
+                              (let [user-can-edit? (:can-edit (deref refs/permissions))]
+                                (pc/open-plugin! plugin)))))))))
+              (.catch (fn [err]
+                        ;; distinguish abort (timeout) from other errors
+                        (if (= (.-name err) "AbortError")
+                          (js/console.error (str "Fetch timed out after " timeout-ms " ms"))
+                          (js/console.error "Failed to install default plugin:" err)))))]
+    ;; start a timer that aborts the fetch if it takes too long
+    (let [tid (js/setTimeout (fn [] (.abort controller)) timeout-ms)]
+      ;; clear the timeout once the chain settles (either success or any failure)
+      (.finally p (fn [] (js/clearTimeout tid))))
+    p))
 
 (defn init
   "Loads stored plugins and auto-installs & opens the default plugin."
