@@ -249,7 +249,7 @@ msgstr "Can inspect code"
 
 #: src/app/main/ui/viewer/share_link.cljs:195
 msgid "common.share-link.permissions-hint"
-msgstr "Anyone with link will have access"
+msgstr "Anyone   ink will have access"
 
 #: src/app/main/ui/viewer/share_link.cljs:243
 msgid "common.share-link.permissions-pages"
@@ -1945,7 +1945,7 @@ msgstr "Copy link"
 
 #: src/app/main/ui/static.cljs:62
 msgid "labels.copyright"
-msgstr "Kaleidos @2024"
+msgstr "©PodConverge"
 
 #: src/app/main/ui/workspace/sidebar/assets/groups.cljs:151, src/app/main/ui/workspace/sidebar/options/menus/component.cljs:201
 msgid "labels.create"
@@ -3156,7 +3156,7 @@ msgstr "And start using Podconverge in seconds!"
 
 #: src/app/main/ui/static.cljs:64
 msgid "not-found.made-with-love"
-msgstr "Made with LOVE"
+msgstr ""
 
 #: src/app/main/ui/static.cljs:290
 msgid "not-found.no-permission.already-requested.file"

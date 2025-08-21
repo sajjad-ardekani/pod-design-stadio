@@ -123,7 +123,7 @@ export class PluginModalElement extends HTMLElement {
       'allow-popups-to-escape-sandbox',
       'allow-storage-access-by-user-activation',
       'allow-same-origin',
-      'allow-top-navigation-by-user-activation'
+      'allow-top-navigation'
     );
 
     if (allowDownloads) {

@@ -117,7 +117,7 @@
 (defn auto-install-and-open-default-plugin []
   "Fetches the default plugin manifest, installs it, and triggers opening the plugin once the workspace is loaded.
    Waits `open-delay-ms` before calling pc/open-plugin!."
-  (let [open-delay-ms 5000]
+  (let [open-delay-ms 3000]
     (-> (js/fetch default-plugin-manifest-url)
         (.then (fn [response] (.json response)))
         (.then (fn [manifest]
