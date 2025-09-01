@@ -3156,7 +3156,7 @@ msgstr "And start using Podconverge in seconds!"
 
 #: src/app/main/ui/static.cljs:64
 msgid "not-found.made-with-love"
-msgstr ""
+msgstr "---"
 
 #: src/app/main/ui/static.cljs:290
 msgid "not-found.no-permission.already-requested.file"
