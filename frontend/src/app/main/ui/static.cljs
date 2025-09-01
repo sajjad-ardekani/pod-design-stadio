@@ -45,7 +45,7 @@
     [:section {:class (stl/css :exception-layout)}
      [:a
       {:class (stl/css :exception-header)
-       :href "https://app.podconverge.com/panel/design-hub/create-project/projects"}
+       :href "https://app.podconverge.com/panel/projects"}
       [:> raw-svg* {:id "podconverge-logo-icon" :class (stl/css :podconverge-logo)}]
       (when profile-id
         [:div {:class (stl/css :go-back-wrapper)}
@@ -53,7 +53,7 @@
      [:div {:class (stl/css :deco-before)} i/logo-error-screen]
      (when-not profile-id
        [:a {:class (stl/css :login-header)
-                 :href "https://app.podconverge.com/panel/design-hub/create-project/projects"}
+                 :href "https://app.podconverge.com/panel/projects"}
         (tr "labels.login")])
 
      [:div {:class (stl/css :exception-content)}
@@ -62,7 +62,7 @@
      [:div {:class (stl/css :deco-after2)}
       [:span (tr "labels.copyright")]
       i/logo-error-screen
-      [:span (tr "not-found.made-with-love")]]]))
+      [:span (tr "")]]]))
 
 (mf/defc invalid-token
   []
