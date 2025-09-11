@@ -50,7 +50,7 @@
    ::mf/wrap [mf/memo]}
   [{:keys [layout on-close]}]
   (let [nav-to-helpc-center
-        (mf/use-fn #(dom/open-new-window "https://podconverge.com/help"))
+        (mf/use-fn #(dom/open-new-window "https://www.podconverge.com/help"))
 
         nav-to-community
         (mf/use-fn #(dom/open-new-window "https://community.penpot.app"))
@@ -65,7 +65,7 @@
         (mf/use-fn #(dom/open-new-window "https://github.com/penpot/penpot"))
 
         nav-to-terms
-        (mf/use-fn #(dom/open-new-window "https://podconverge.com/terms"))
+        (mf/use-fn #(dom/open-new-window "https://www.podconverge.com/privacy"))
 
         nav-to-feedback
         (mf/use-fn #(st/emit! (dcm/go-to-feedback)))
