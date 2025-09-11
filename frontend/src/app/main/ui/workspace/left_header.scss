@@ -13,12 +13,28 @@
   min-height: $s-52;
 }
 
+.back-icon {
+  @include flexCenter;
+  width: $s-24;
+  height: $s-24;
+  min-height: $s-24;
+  margin-right: $s-0;
+  cursor: pointer;
+  rotate: 180deg;
+  svg {
+    min-height: $s-24;
+    width: $s-24;
+    fill: var(--icon-foreground-hover);
+  }
+}
+
 .main-icon {
   @include flexCenter;
   width: $s-32;
   height: $s-32;
   min-height: $s-32;
   margin-right: $s-4;
+  cursor: pointer;
   svg {
     min-height: $s-32;
     width: $s-32;
@@ -31,7 +47,7 @@
   flex-grow: 1;
   height: $s-32;
   min-height: $s-32;
-  max-width: calc(100% - $s-64);
+  max-width: calc(100% - $s-76);
 }
 
 .project-name,
