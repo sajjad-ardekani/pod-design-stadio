@@ -1750,7 +1750,7 @@ msgstr "More info about inspect"
 
 #: src/app/main/ui/inspect/right_sidebar.cljs:158
 msgid "inspect.empty.select"
-msgstr "Select a shape, board or group to inspect their properties and code"
+msgstr "Select a shape, board or group to inspect their properties"
 
 #: src/app/main/ui/inspect/right_sidebar.cljs:61
 msgid "inspect.subtitle.copy"

@@ -85,9 +85,10 @@
         (mf/with-memo []
           [{:label (tr "inspect.tabs.info")
             :id "info"}
-           {:label (tr "inspect.tabs.code")
-            :data-testid "code"
-            :id "code"}])]
+;;            {:label (tr "inspect.tabs.code")
+;;             :data-testid "code"
+;;             :id "code"}
+          ])]
 
     (mf/use-effect
      (mf/deps shapes handle-change-tab)
@@ -155,11 +156,12 @@
           i/code]
          [:span {:class (stl/css :placeholder-label)}
           (tr "inspect.empty.select")]]
-        [:div {:class (stl/css :help-info)}
-         [:span {:class (stl/css :placeholder-icon)}
-          i/help]
-         [:span {:class (stl/css :placeholder-label)}
-          (tr "inspect.empty.help")]]
-        [:button {:class (stl/css :more-info-btn)
-                  :on-click navigate-to-help}
-         (tr "inspect.empty.more-info")]])]))
+;;         [:div {:class (stl/css :help-info)}
+;;          [:span {:class (stl/css :placeholder-icon)}
+;;           i/help]
+;;          [:span {:class (stl/css :placeholder-label)}
+;;           (tr "inspect.empty.help")]]
+;;         [:button {:class (stl/css :more-info-btn)
+;;                   :on-click navigate-to-help}
+;;          (tr "inspect.empty.more-info")]
+        ])]))
