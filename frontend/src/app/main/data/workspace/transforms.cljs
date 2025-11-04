@@ -348,7 +348,11 @@
 (defn trigger-bounding-box-cloaking
   "Trigger the bounding box cloaking (with default timer of 1sec)
 
-  Used to hide bounding-box of shape after changes in sidebar->measures."
+  Used to hide bounding-box of shape after changes in sidebar->measures.
+
+  NOTE: This version will abort (no-op) if any of the provided `ids` is
+  a print-area shape. We do not silently filter print-area ids — we abort
+  the whole operation (consistent with delete-shapes behavior)."
   [ids]
   (dm/assert!
    "expected valid coll of uuids"
@@ -356,14 +360,29 @@
 
   (ptk/reify ::trigger-bounding-box-cloaking
     ptk/WatchEvent
-    (watch [_ _ stream]
-      (rx/concat
-       (rx/of #(assoc-in % [:workspace-local :transform] :move))
-       (->> (rx/timer 1000)
-            (rx/map (fn []
-                      #(assoc-in % [:workspace-local :transform] nil)))
-            (rx/take-until
-             (rx/filter (ptk/type? ::trigger-bounding-box-cloaking) stream)))))))
+    (watch [_ state stream]
+      (let [page-id (:current-page-id state)
+            objects (dsh/lookup-page-objects state page-id)
+            ;; find any print-area ids in the provided ids
+            print-area-ids (->> ids
+                                (filter (fn [id]
+                                          (let [shape (get objects id)]
+                                            (and shape (dsh/shape-is-print-area? shape)))))
+                                (into []))]
+
+        (if (not (empty? print-area-ids))
+          (do
+            ;; abort whole operation if any print-area is present
+            (js/console.debug "trigger-bounding-box-cloaking: aborting because ids contain print-area" (clj->js print-area-ids))
+            (rx/empty))
+          ;; otherwise preserve previous behavior
+          (rx/concat
+           (rx/of #(assoc-in % [:workspace-local :transform] :move))
+           (->> (rx/timer 1000)
+                (rx/map (fn []
+                          #(assoc-in % [:workspace-local :transform] nil)))
+                (rx/take-until
+                 (rx/filter (ptk/type? ::trigger-bounding-box-cloaking) stream)))))))))
 
 (defn update-dimensions
   "Change size of shapes, from the sidebar options form
@@ -386,17 +405,28 @@
              objects
              (dsh/lookup-page-objects state page-id)
 
-             get-modifier
-             (fn [shape]
-               (ctm/change-dimensions-modifiers shape attr value))
+             ;; Filter out print-area ids (use the helper you already added)
+             filtered-ids (dsh/remove-print-area-ids ids objects)]
 
-             modif-tree
-             (-> (dwm/build-modif-tree ids objects get-modifier)
-                 (gm/set-objects-modifiers objects))]
+         ;; If everything was a print-area, there's nothing to change
+         (if (empty? filtered-ids)
+           (do
+             ;; nothing to apply — return an empty observable
+             (js/console.debug "update-dimensions: all ids are print-area, skipping." ids)
+             (rx/empty))
 
-         (if (features/active-feature? state "render-wasm/v1")
-           (rx/of (dwm/apply-wasm-modifiers modif-tree {:ignore-snap-pixel true}))
-           (rx/of (dwm/apply-modifiers* objects modif-tree nil options))))))))
+           ;; Otherwise build modifiers for the remaining ids and apply them
+           (let [get-modifier
+                 (fn [shape]
+                   (ctm/change-dimensions-modifiers shape attr value))
+
+                 modif-tree
+                 (-> (dwm/build-modif-tree filtered-ids objects get-modifier)
+                     (gm/set-objects-modifiers objects))]
+
+             (if (features/active-feature? state "render-wasm/v1")
+               (rx/of (dwm/apply-wasm-modifiers modif-tree {:ignore-snap-pixel true}))
+               (rx/of (dwm/apply-modifiers* objects modif-tree nil options))))))))))
 
 (defn change-orientation
   "Change orientation of shapes, from the sidebar options form.
@@ -414,31 +444,42 @@
     (update [_ state]
       (if (features/active-feature? state "render-wasm/v1")
         state
-        (let [objects     (dsh/lookup-page-objects state)
+        (let [page-id (get state :current-page-id)
+              objects (dsh/lookup-page-objects state page-id)
+              ;; filter out print area shapes
+              filtered-ids (dsh/remove-print-area-ids ids objects)]
 
-              get-modifier
-              (fn [shape] (ctm/change-orientation-modifiers shape orientation))
+          ;; if no shapes remain, no-op
+          (if (empty? filtered-ids)
+            state
+            (let [get-modifier
+                  (fn [shape] (ctm/change-orientation-modifiers shape orientation))
 
-              modif-tree
-              (-> (dwm/build-modif-tree ids objects get-modifier)
-                  (gm/set-objects-modifiers objects))]
-
-          (assoc state :workspace-modifiers modif-tree))))
+                  modif-tree
+                  (-> (dwm/build-modif-tree filtered-ids objects get-modifier)
+                      (gm/set-objects-modifiers objects))]
+              (assoc state :workspace-modifiers modif-tree))))))
 
     ptk/WatchEvent
     (watch [_ state _]
-      (if (features/active-feature? state "render-wasm/v1")
-        (let [objects     (dsh/lookup-page-objects state)
-
-              get-modifier
-              (fn [shape] (ctm/change-orientation-modifiers shape orientation))
-
-              modif-tree
-              (-> (dwm/build-modif-tree ids objects get-modifier)
-                  (gm/set-objects-modifiers objects))]
-          (rx/of (dwm/apply-wasm-modifiers modif-tree)))
-
-        (rx/of (dwm/apply-modifiers))))))
+      (let [page-id (get state :current-page-id)
+            objects (dsh/lookup-page-objects state page-id)
+            filtered-ids (dsh/remove-print-area-ids ids objects)]
+        (if (empty? filtered-ids)
+          (rx/empty)
+          (if (features/active-feature? state "render-wasm/v1")
+            (let [get-modifier
+                  (fn [shape] (ctm/change-orientation-modifiers shape orientation))
+                  modif-tree
+                  (-> (dwm/build-modif-tree filtered-ids objects get-modifier)
+                      (gm/set-objects-modifiers objects))]
+              (rx/of (dwm/apply-wasm-modifiers modif-tree)))
+            (let [get-modifier
+                  (fn [shape] (ctm/change-orientation-modifiers shape orientation))
+                  modif-tree
+                  (-> (dwm/build-modif-tree filtered-ids objects get-modifier)
+                      (gm/set-objects-modifiers objects))]
+              (rx/of (dwm/apply-modifiers)))))))))
 
 ;; -- Rotate --------------------------------------------------------
 
@@ -520,28 +561,35 @@
    (ptk/reify ::increase-rotation
      ptk/WatchEvent
      (watch [_ state _]
-       (if (features/active-feature? state "render-wasm/v1")
-         (let [objects (dsh/lookup-page-objects state)
+       (let [page-id (or (:page-id options)
+                         (:current-page-id state))
+             objects (dsh/lookup-page-objects state page-id)
 
-               get-modifier
-               (fn [shape]
-                 (let [delta  (if delta? rotation (- rotation (:rotation shape)))
-                       center (or center (gsh/shape->center shape))]
-                   (ctm/rotation-modifiers shape center delta)))
+             ;; filter ids to remove print-area shapes
+             filtered-ids (dsh/remove-print-area-ids ids objects)]
 
-               modif-tree
-               (dwm/build-modif-tree ids objects get-modifier)]
+         (if (features/active-feature? state "render-wasm/v1")
+           (let [get-modifier
+                 (fn [shape]
+                   (let [delta  (if delta? rotation (- rotation (:rotation shape)))
+                         center (or center (gsh/shape->center shape))]
+                     (ctm/rotation-modifiers shape center delta)))
 
-           (rx/of (dwm/apply-wasm-modifiers modif-tree)))
+                 modif-tree
+                 (dwm/build-modif-tree filtered-ids objects get-modifier)]
 
-         (let [page-id (or (:page-id options)
-                           (:current-page-id state))
-               objects (dsh/lookup-page-objects state page-id)
-               shapes  (->> ids (map #(get objects %)))
-               options (assoc options :page-id page-id)]
-           (rx/concat
-            (rx/of (dwm/set-delta-rotation-modifiers rotation shapes (assoc params :page-id page-id)))
-            (rx/of (dwm/apply-modifiers options)))))))))
+             (if (empty? filtered-ids)
+               (rx/empty)
+               (rx/of (dwm/apply-wasm-modifiers modif-tree))))
+
+           (let [shapes  (->> filtered-ids (map #(get objects %)))
+                 options (assoc options :page-id page-id)]
+             (if (empty? filtered-ids)
+               (rx/empty)
+               (rx/concat
+                (rx/of (dwm/set-delta-rotation-modifiers rotation shapes (assoc params :page-id page-id)))
+                (rx/of (dwm/apply-modifiers options)))))))))))
+
 ;; -- Move ----------------------------------------------------------
 
 (declare start-move)
@@ -561,14 +609,23 @@
              stopper (mse/drag-stopper stream {:interrupt? false})
              zoom    (get-in state [:workspace-local :zoom] 1)
 
+             page-id (:current-page-id state)
+             objects (dsh/lookup-page-objects state page-id)
+
              ;; We toggle the selection so we don't have to wait for the event
-             selected
+             selected-raw
              (cond-> (dsh/lookup-selected state {:omit-blocked? true})
                (some? id)
-               (d/toggle-selection id shift?))]
+               (d/toggle-selection id shift?))
+
+             ;; Remove print-area ids from selected (using your helper)
+             selected (dsh/remove-print-area-ids selected-raw objects)]
+
+;;          (when (empty? selected)
+;;            (js/console.log "start-move-selected: filtered selection is empty (possibly all were print-area). Aborting move start."))
 
          ;; Take the first mouse position and start a move or a duplicate
-         (when (or (d/not-empty? selected) (some? id))
+         (when (d/not-empty? selected)
            (->> ms/mouse-position
                 (rx/map #(gpt/to-vec initial %))
                 (rx/map #(gpt/length %))
@@ -578,7 +635,8 @@
                 (rx/mapcat
                  (fn [[_ alt?]]
                    (rx/concat
-                    (if (some? id)
+                    ;; Only emit select-shape if the provided id is still in the filtered selection
+                    (if (and (some? id) (contains? (set selected) id))
                       (rx/of (dws/select-shape id shift?))
                       (rx/empty))
 
@@ -600,12 +658,25 @@
           (assoc-in [:workspace-local :transform] :move)
           (assoc-in [:workspace-local :duplicate-move-started?] true)))
 
+    ;; NOTE: we need the `state` here so we can check the current selection
     ptk/WatchEvent
-    (watch [_ _ stream]
+    (watch [_ state stream]
       (->> stream
            (rx/filter (ptk/type? ::dws/duplicate-selected))
            (rx/take 1)
-           (rx/map #(start-move from-position))))))
+           (rx/mapcat
+            (fn [_]
+              (let [page-id (:current-page-id state)
+                    objects (dsh/lookup-page-objects state page-id)
+                    selected (dsh/lookup-selected state {:omit-blocked? true})
+                    filtered (dsh/remove-print-area-ids selected objects)]
+                (if (d/not-empty? filtered)
+                  ;; There is at least one non-print-area selected — allow duplicate+move
+                  (rx/of (start-move from-position))
+                  ;; All selected were print-areas — skip starting move
+                  (do
+                    (js/console.debug "start-move-duplicate: selection contains only print-areas — skipping duplicate move.")
+                    (rx/empty))))))))))
 
 (defn get-drop-cell
   [target-frame objects position]
@@ -620,9 +691,15 @@
   [move-vector]
   (ptk/reify ::set-ghost-displacement
     ptk/EffectEvent
-    (effect [_ _ _]
-      (when-let [node (dom/get-element-by-class "ghost-outline")]
-        (dom/set-property! node "transform" (gmt/translate-matrix move-vector))))))
+    (effect [_ state _]
+      ;; Inspect current selection and skip if all selected shapes are print areas
+      (let [page-id (:current-page-id state)
+            objects (dsh/lookup-page-objects state page-id)
+            selected (dsh/lookup-selected state {:omit-blocked? true})
+            filtered (dsh/remove-print-area-ids selected objects)]
+        (when (d/not-empty? filtered)
+          (when-let [node (dom/get-element-by-class "ghost-outline")]
+            (dom/set-property! node "transform" (gmt/translate-matrix move-vector))))))))
 
 (defn start-move
   ([from-position] (start-move from-position nil))
@@ -917,7 +994,8 @@
       ptk/WatchEvent
       (watch [_ state stream]
         (if (= same-event (get state ::current-move-selected))
-          (let [selected (dsh/lookup-selected state {:omit-blocked? true})
+          (let [selected (->> (dsh/lookup-selected state {:omit-blocked? true})
+                              (dsh/remove-print-area-ids (dsh/lookup-page-objects state (:current-page-id state))))
                 nudge (get-in state [:profile :props :nudge] {:big 10 :small 1})
                 move-events (->> stream
                                  (rx/filter (ptk/type? ::nudge-selected-shapes))
@@ -979,12 +1057,18 @@
     (watch [_ state _]
       (let [objects (dsh/lookup-page-objects state)
             selected (dsh/lookup-selected state {:omit-blocked? true})
-            selected-shapes (->> selected (map (d/getf objects)))]
-        (if (every? #(and (ctl/any-layout-immediate-child? objects %)
-                          (not (ctl/position-absolute? %)))
-                    selected-shapes)
-          (rx/of (reorder-selected-layout-child direction))
-          (rx/of (nudge-selected-shapes direction shift?)))))))
+            ;; filter out print-area shapes
+            filtered-ids (dsh/remove-print-area-ids selected objects)
+            selected-shapes (->> filtered-ids (map (d/getf objects)))]
+        (if (empty? filtered-ids)
+          ;; nothing to do when selection is only print areas
+          (rx/empty)
+
+          (if (every? #(and (ctl/any-layout-immediate-child? objects %)
+                            (not (ctl/position-absolute? %)))
+                      selected-shapes)
+            (rx/of (reorder-selected-layout-child direction))
+            (rx/of (nudge-selected-shapes direction shift?))))))))
 
 (defn- calculate-delta
   [position bbox relative-to]
@@ -1001,7 +1085,8 @@
   resolve to the root frame of the page.
 
   The position is a map that can have a partial position (it means it
-  can receive {:x 10}."
+  can receive {:x 10}). This version guards print-area shapes and
+  skips moving them."
   ([id position] (update-position id position nil))
   ([id position options]
    (assert (uuid? id) "expected a valid uuid for `id`")
@@ -1013,55 +1098,67 @@
        (let [page-id   (or (get options :page-id)
                            (get state :current-page-id))
              objects   (dsh/lookup-page-objects state page-id)
-             shape     (get objects id)
+             shape     (get objects id)]
 
-             bbox      (-> shape :points grc/points->rect)
-             frame     (if (:absolute? options)
-                         (cfh/get-frame objects)
-                         (cfh/get-parent-frame objects shape))
+         ;; If shape is a print-area, do nothing
+         (when (and shape (dsh/shape-is-print-area? shape))
+           (js/console.debug "update-position: target is print-area, skipping move for id" id)
+           (rx/of (finish-transform))) ;; ensure we return an empty observable
 
-             delta     (calculate-delta position bbox frame)
-             modifiers (dwm/create-modif-tree [id] (ctm/move-modifiers delta))]
+         (let [bbox      (-> shape :points grc/points->rect)
+               frame     (if (:absolute? options)
+                           (cfh/get-frame objects)
+                           (cfh/get-parent-frame objects shape))
+               delta     (calculate-delta position bbox frame)
+               modifiers (dwm/create-modif-tree [id] (ctm/move-modifiers delta))]
 
+           (if (features/active-feature? state "render-wasm/v1")
+             (rx/of (dwm/apply-wasm-modifiers modifiers
+                                              {:ignore-constraints false
+                                               :ignore-touched (:ignore-touched options)
+                                               :ignore-snap-pixel true}))
 
-         (if (features/active-feature? state "render-wasm/v1")
-           (rx/of (dwm/apply-wasm-modifiers modifiers
-                                            {:ignore-constraints false
-                                             :ignore-touched (:ignore-touched options)
-                                             :ignore-snap-pixel true}))
-
-           (rx/of (dwm/apply-modifiers {:modifiers modifiers
-                                        :page-id page-id
-                                        :ignore-constraints false
-                                        :ignore-touched (:ignore-touched options)
-                                        :ignore-snap-pixel true}))))))))
+             (rx/of (dwm/apply-modifiers {:modifiers modifiers
+                                          :page-id page-id
+                                          :ignore-constraints false
+                                          :ignore-touched (:ignore-touched options)
+                                          :ignore-snap-pixel true})))))))))
 
 (defn position-shapes
   [shapes]
   (ptk/reify ::position-shapes
     ptk/WatchEvent
     (watch [_ state _]
-      (let [objects (dsh/lookup-page-objects state)
-            shapes  (d/index-by :id shapes)
+      (let [objects   (dsh/lookup-page-objects state)
+            ;; index incoming shapes by id for easy lookup
+            shapes-map (d/index-by :id shapes)
+            ids        (keys shapes-map)
 
-            modif-tree
-            (dwm/build-modif-tree
-             (keys shapes)
-             objects
-             (fn [cshape]
-               (let [oshape (get shapes (:id cshape))
-                     cpos   (-> cshape :points first gpt/point)
-                     opos   (-> oshape :points first gpt/point)]
-                 (ctm/move-modifiers (gpt/subtract opos cpos)))))]
+            ;; filter out print-area ids using your helper
+            filtered-ids (dsh/remove-print-area-ids ids objects)]
 
-        (if (features/active-feature? state "render-wasm/v1")
-          (rx/of (dwm/apply-wasm-modifiers modif-tree
-                                           {:ignore-constraints false
-                                            :ignore-snap-pixel true}))
+        ;; nothing to do if all provided shapes are print areas
+        (if (empty? filtered-ids)
+          (do
+            (js/console.debug "position-shapes: all shapes are print-area, skipping." (clj->js ids))
+            (rx/empty))
 
-          (rx/of (dwm/apply-modifiers {:modifiers modif-tree
-                                       :ignore-constraints false
-                                       :ignore-snap-pixel true})))))))
+          (let [modif-tree
+                (dwm/build-modif-tree
+                 filtered-ids
+                 objects
+                 (fn [cshape]
+                   (let [oshape (get shapes-map (:id cshape))
+                         cpos   (-> cshape :points first gpt/point)
+                         opos   (-> oshape :points first gpt/point)]
+                     (ctm/move-modifiers (gpt/subtract opos cpos)))))]
+            (if (features/active-feature? state "render-wasm/v1")
+              (rx/of (dwm/apply-wasm-modifiers modif-tree
+                                               {:ignore-constraints false
+                                                :ignore-snap-pixel true}))
+              (rx/of (dwm/apply-modifiers {:modifiers modif-tree
+                                           :ignore-constraints false
+                                           :ignore-snap-pixel true})))))))))
 
 (defn- cleanup-invalid-moving-shapes [ids objects frame-id]
   (let [lookup   (d/getf objects)

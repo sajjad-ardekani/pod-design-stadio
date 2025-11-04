@@ -477,12 +477,21 @@
        (let [libraries          (dsh/lookup-libraries state)
              library            (get libraries library-id)
 
+             ;; generate the main-instance (a shape map) and the changes
              [main-instance changes]
              (-> (pcb/empty-changes it nil)
                  (cll/generate-duplicate-component library component-id new-component-id))]
-         (rx/of
-          (ptk/data-event :layout/update {:ids [(:id main-instance)]})
-          (dch/commit-changes changes)))))))
+
+         ;; If the main-instance (root of the duplicated component) is a print-area,
+         ;; abort the whole operation (do not commit changes).
+         (if (and main-instance (dsh/shape-is-print-area? main-instance))
+           (do
+             (js/console.debug "duplicate-component: aborting because main-instance is print-area" (clj->js (:id main-instance)))
+             (rx/empty))
+           ;; otherwise proceed as before
+           (rx/of
+            (ptk/data-event :layout/update {:ids [(:id main-instance)]})
+            (dch/commit-changes changes))))))))
 
 (defn delete-component
   "Delete the component with the given id, from the current file library."
@@ -503,21 +512,29 @@
             page          (dsh/get-page fdata page-id)
             objects       (:objects page)
 
-            undo-group    (uuid/next)
-            undo-id       (js/Symbol)
+            ;; if root shape exists and is print-area -> abort
+            root-shape    (get objects root-id)]
 
-            [all-parents changes]
-            (-> (pcb/empty-changes it page-id)
-                ;; Deleting main root triggers component delete
-                (cls/generate-delete-shapes fdata page objects #{root-id} {:undo-group undo-group
-                                                                           :undo-id undo-id}))]
-        (rx/of
-         (dwu/start-undo-transaction undo-id)
-         (dwt/clear-thumbnail (:current-file-id state) page-id root-id "component")
-         (dc/detach-comment-thread #{root-id})
-         (dch/commit-changes changes)
-         (ptk/data-event :layout/update {:ids all-parents :undo-group undo-group})
-         (dwu/commit-undo-transaction undo-id))))))
+        (if (and root-shape (dsh/shape-is-print-area? root-shape))
+          (do
+            (js/console.debug "delete-component: aborting because component main-instance is print-area" (clj->js root-id))
+            (rx/empty))
+          (let [undo-group    (uuid/next)
+                undo-id       (js/Symbol)
+
+                [all-parents changes]
+                (-> (pcb/empty-changes it page-id)
+                    ;; Deleting main root triggers component delete
+                    (cls/generate-delete-shapes fdata page objects #{root-id}
+                                                {:undo-group undo-group
+                                                 :undo-id undo-id}))]
+            (rx/of
+             (dwu/start-undo-transaction undo-id)
+             (dwt/clear-thumbnail (:current-file-id state) page-id root-id "component")
+             (dc/detach-comment-thread #{root-id})
+             (dch/commit-changes changes)
+             (ptk/data-event :layout/update {:ids all-parents :undo-group undo-group})
+             (dwu/commit-undo-transaction undo-id))))))))
 
 (defn restore-component
   "Restore a deleted component, with the given id, in the given file library."

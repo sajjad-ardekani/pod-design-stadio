@@ -35,6 +35,7 @@
    [app.render-wasm.api :as wasm.api]
    [app.render-wasm.shape :as wasm.shape]
    [beicon.v2.core :as rx]
+   [clojure.string :as str]
    [potok.v2.core :as ptk]))
 
 (def ^:private xf:without-uuid-zero
@@ -260,7 +261,16 @@
   (dm/assert!
    "expected valid coll of uuids"
    (every? uuid? ids))
-  (into {} (map #(vector % {:modifiers (get-modifier (get objects %))})) ids))
+  ;; Filter out print-area ids early so downstream modifiers never touch them.
+  (let [ids (->> ids
+                 ;; remove nil/zero ids if present and remove print-area shapes
+                 (remove (fn [id]
+                           (or (= id uuid/zero)
+                               (let [shape (get objects id)]
+                                 (and shape (dsh/shape-is-print-area? shape))))))
+                 ;; ensure concrete seq for into
+                 (into []))]
+    (into {} (map #(vector % {:modifiers (get-modifier (get objects %))}) ids))))
 
 (defn modifier-remove-from-parent
   [modif-tree objects shapes]
@@ -486,9 +496,27 @@
    (ptk/reify ::set-modifiers
      ptk/UpdateEvent
      (update [_ state]
-       (let [page-id   (:current-page-id state)
-             modifiers (calculate-modifiers state ignore-constraints ignore-snap-pixel modif-tree page-id params)]
-         (assoc state :workspace-modifiers modifiers))))))
+       (let [page-id (:current-page-id state)
+             ;; lookup objects for the current page
+             objects (dsh/lookup-page-objects state page-id)
+             ;; collect ids present in the incoming modif-tree
+             ids     (->> (keys modif-tree) (into []))
+             ;; find any ids that are print-area shapes
+             print-area-ids
+             (->> ids
+                  (filter (fn [id]
+                            (let [shape (get objects id)]
+                              (and shape (dsh/shape-is-print-area? shape)))))
+                  (into []))]
+         (if (not (empty? print-area-ids))
+           (do
+             (js/console.debug "set-modifiers: aborting because modif-tree contains print-area ids"
+                               (clj->js print-area-ids))
+             ;; return state unchanged (no modifiers applied)
+             state)
+           ;; otherwise compute and set modifiers as before
+           (let [modifiers (calculate-modifiers state ignore-constraints ignore-snap-pixel modif-tree page-id params)]
+             (assoc state :workspace-modifiers modifiers))))))))
 
 (defn- parse-structure-modifiers
   [modif-tree]
@@ -683,7 +711,10 @@
 (def ^:private
   xf-rotation-shape
   (comp
-   (remove #(get % :blocked false))
+   ;; remove blocked shapes and print-area shapes
+   (remove (fn [s]
+             (or (get s :blocked false)
+                 (dsh/shape-is-print-area? s))))
    (filter #(:rotation (get editable-attrs (:type %))))
    (map :id)))
 
@@ -748,7 +779,9 @@
             objects (dsh/lookup-page-objects state page-id)
             ids
             (->> shapes
-                 (remove #(get % :blocked false))
+                 ;; remove blocked shapes and print-area shapes
+                 (remove #(or (get % :blocked false)
+                              (dsh/shape-is-print-area? %)))
                  (filter #(contains? (get editable-attrs (:type %)) :rotation))
                  (map :id))
 
@@ -774,6 +807,14 @@
       (let [ids
             (into [] xf:without-uuid-zero (keys object-modifiers))
 
+            ;; find any print-area ids among the direct targets (do NOT filter them)
+            print-area-ids
+            (->> ids
+                 (filter (fn [id]
+                           (let [shape (get objects id)]
+                             (and shape (dsh/shape-is-print-area? shape)))))
+                 (into []))
+
             ids-with-children
             (into ids
                   (mapcat (partial cfh/get-children-ids objects))
@@ -786,8 +827,8 @@
             (-> options
                 (assoc :reg-objects? true)
                 (assoc :ignore-tree ignore-tree)
-                 ;; Attributes that can change in the transform. This
-                 ;; way we don't have to check all the attributes
+                ;; Attributes that can change in the transform. This
+                ;; way we don't have to check all the attributes
                 (assoc :attrs transform-attrs))
 
             update-shape
@@ -806,10 +847,14 @@
                       (update :content path/content))
                     (cond-> text-shape?
                       (update-grow-type shape)))))]
-
-        (rx/of (ptk/event ::dwg/move-frame-guides {:ids ids-with-children :modifiers object-modifiers})
-               (ptk/event ::dwcm/move-frame-comment-threads ids-with-children)
-               (dwsh/update-shapes ids update-shape options))))))
+        ;; Abort whole operation if any target id is a print-area
+        (if (not (empty? print-area-ids))
+          (do
+            (js/console.debug "apply-modifiers*: aborting because targets contain print-area ids" (clj->js print-area-ids))
+            (rx/empty))
+          (rx/of (ptk/event ::dwg/move-frame-guides {:ids ids-with-children :modifiers object-modifiers})
+                 (ptk/event ::dwcm/move-frame-comment-threads ids-with-children)
+                 (dwsh/update-shapes ids update-shape options)))))))
 
 (defn apply-modifiers
   ([]
@@ -831,23 +876,42 @@
                (calculate-modifiers state ignore-constraints ignore-snap-pixel modifiers page-id)
                (get state :workspace-modifiers))
 
+             ;; compute the direct target ids (ignore uuid/zero)
+             ids (into [] xf:without-uuid-zero (keys object-modifiers))
+
+             ;; find any print-area ids among the direct targets
+             print-area-ids
+             (->> ids
+                  (filter (fn [id]
+                            (let [shape (get objects id)]
+                              (and shape (dsh/shape-is-print-area? shape)))))
+                  (into []))
+
              undo-id
              (js/Symbol)]
 
-         (rx/concat
-          (if undo-transation?
-            (rx/of (dwu/start-undo-transaction undo-id))
-            (rx/empty))
-          (rx/of (apply-modifiers* objects object-modifiers text-modifiers options)
-                 (fn [state]
-                   (let [ids (into [] xf:without-uuid-zero (keys object-modifiers))]
-                     (update state :workspace-text-modifier #(apply dissoc % ids)))))
-          (if (nil? modifiers)
-            (rx/of (clear-local-transform))
-            (rx/empty))
-          (if undo-transation?
-            (rx/of (dwu/commit-undo-transaction undo-id))
-            (rx/empty))))))))
+         ;; Abort whole operation if any target id is a print-area
+         (if (not (empty? print-area-ids))
+           (do
+             (js/console.debug "apply-modifiers: aborting because targets contain print-area ids" (clj->js print-area-ids))
+             ;; return an empty observable - nothing executed, no undo started
+             (rx/empty))
+
+           ;; otherwise proceed with original behavior
+           (rx/concat
+            (if undo-transation?
+              (rx/of (dwu/start-undo-transaction undo-id))
+              (rx/empty))
+            (rx/of (apply-modifiers* objects object-modifiers text-modifiers options)
+                   (fn [state]
+                     (let [ids (into [] xf:without-uuid-zero (keys object-modifiers))]
+                       (update state :workspace-text-modifier #(apply dissoc % ids)))))
+            (if (nil? modifiers)
+              (rx/of (clear-local-transform))
+              (rx/empty))
+            (if undo-transation?
+              (rx/of (dwu/commit-undo-transaction undo-id))
+              (rx/empty)))))))))
 
 ;; Pure function to determine next grow-type for text layers
 (defn next-grow-type [current-grow-type resize-direction]

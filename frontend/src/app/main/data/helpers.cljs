@@ -11,6 +11,7 @@
    [app.common.files.helpers :as cfh]
    [app.common.geom.point :as gpt]
    [app.common.geom.shapes :as gsh]
+   [clojure.string :as str]
    [app.common.types.path :as path]))
 
 (defn lookup-profile
@@ -203,3 +204,105 @@
         :projects
         (filter #(= team-id (:team-id (val %))))
         (into {}))))
+
+(defn- ->clj-if-js
+  "Convert JS object to CLJ map only when necessary. Keep string keys (no keywordize)."
+  [x]
+  (cond
+    (map? x) x
+    (nil? x) nil
+    :else
+    (try
+      (js->clj x :keywordize-keys false)
+      (catch :default _
+        x))))
+
+(defn- get-from-js-or-map
+  "Fetch key `kstr` from `m` that can be either a CLJ map (with string or keyword keys)
+   or a JS object. Returns nil if not found. Tries multiple variants:
+   string, keyword, underscore/kebab variants."
+  [m kstr]
+  (when (some? m)
+    (let [alt1 (str/replace kstr "_" "-")
+          alt2 (str/replace kstr "-" "_")
+          try-keys [kstr (keyword kstr) alt1 alt2 (keyword alt1) (keyword alt2)]]
+      (cond
+        (map? m)
+        (some (fn [k] (when (contains? m k) (get m k))) try-keys)
+
+        :else
+        ;; JS object: try aget with string keys (js objects don't respond to contains?)
+        (some (fn [k]
+                (let [ks (if (keyword? k) (name k) (str k))
+                      v  (try (aget m ks) (catch :default _ nil))]
+                  (when (some? v) v)))
+              try-keys)))))
+
+(defn- lookup-plugin-namespace
+  "Given plugin-data `pd` (map or JS object) and namespace `ns-str`, return the ns map/object."
+  [pd ns-str]
+  (when (some? pd)
+    (let [pd-clj (->clj-if-js pd)
+          ns-val (when (map? pd-clj) (get-from-js-or-map pd-clj ns-str))]
+      (if (some? ns-val)
+        (->clj-if-js ns-val)
+        ;; fallback: try reading directly from original pd (JS object case)
+        (let [v (get-from-js-or-map pd ns-str)]
+          (when (some? v) (->clj-if-js v)))))))
+
+(defn get-shape-plugin-data
+  "Return the plugin-data value for `key` on `shape`."
+  ([shape key] (get-shape-plugin-data shape nil key))
+  ([shape ns key]
+   (let [kstr (if (keyword? key) (name key) (str key))
+
+         ;; 1) Try direct JS path first (works when shape and plugin-data are native JS objects)
+         pd-js    (or (aget shape "plugin-data"))
+         ns-js    (when (and ns pd-js) (aget pd-js ns))
+         val-js   (cond
+                    (and ns-js (some? ns-js)) (or (aget ns-js kstr) (aget ns-js (name (keyword kstr))))
+                    (some? pd-js)            (or (aget pd-js kstr) (aget pd-js (name (keyword kstr))))
+                    :else                   nil)]
+
+     (if (some? val-js)
+       val-js
+       ;; 2) Fallback: robust CLJ/js->clj handling
+       (let [pd-raw (or (get shape :plugin-data)
+                        (get shape "plugin-data"))
+             pd     (->clj-if-js pd-raw)]
+         (if ns
+           (let [nsmap (lookup-plugin-namespace pd ns)]
+             (when (some? nsmap)
+               (or (get-from-js-or-map nsmap kstr)
+                   (get-from-js-or-map nsmap (str/replace kstr "_" "-"))
+                   (get-from-js-or-map nsmap (str/replace kstr "-" "_")))))
+           (get-from-js-or-map pd kstr)))))))
+
+(defn- truthy-plugin-value?
+  "Return true for common truthy plugin-data values."
+  [v]
+  (when (some? v)
+    (let [s (-> (str v) str/trim str/lower-case)]
+      (or (= s "1")
+          (= s "true")
+          (= s "yes")
+          (= s "on")
+          (= s "t")
+          (= v 1)))))
+
+(defn shape-is-print-area?
+  "Return true if shape plugin-data marks it as a print area."
+  [shape]
+  (let [val (or (get-shape-plugin-data shape "shared/podconverge" "isPrintArea")
+                (get-shape-plugin-data shape "shared/podconverge" "isPrintAreaBackground")
+                (get-shape-plugin-data shape "shared/podconverge" "isBoardPrintArea"))]
+    (boolean (truthy-plugin-value? val))))
+
+(defn- remove-print-area-ids
+  "Filter out print-area ids from `ids` using `objects` map."
+  [ids objects]
+  (->> ids
+       (remove (fn [id]
+                 (let [shape (get objects id)]
+                   (and shape (shape-is-print-area? shape)))))
+       (into [])))

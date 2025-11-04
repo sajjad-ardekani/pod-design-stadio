@@ -26,6 +26,7 @@
    [app.main.data.workspace.selection :as dws]
    [app.main.data.workspace.undo :as dwu]
    [beicon.v2.core :as rx]
+   [clojure.string :as str]
    [potok.v2.core :as ptk]))
 
 (def ^:private update-layout-attr? #{:hidden})
@@ -189,25 +190,40 @@
    (ptk/reify ::delete-shapes
      ptk/WatchEvent
      (watch [it state _]
-       (let [file-id       (:current-file-id state)
-             page-id       (or page-id (:current-page-id state))
+       (let [file-id (:current-file-id state)
+             page-id (or page-id (:current-page-id state))
 
-             fdata         (dsh/lookup-file-data state file-id)
-             page          (dsh/get-page fdata page-id)
-             objects       (:objects page)
+             fdata   (dsh/lookup-file-data state file-id)
+             page    (dsh/get-page fdata page-id)
+             objects (:objects page)
 
-             undo-id (or (:undo-id options) (js/Symbol))
-             [all-parents changes] (-> (pcb/empty-changes it (:id page))
-                                       (cls/generate-delete-shapes fdata page objects ids
-                                                                   {:ignore-touched (:allow-altering-copies options)
-                                                                    :undo-group (:undo-group options)
-                                                                    :undo-id undo-id}))]
+             ;; find any ids that are print-area shapes
+             print-area-ids
+             (->> ids
+                  (filter (fn [id]
+                            (let [shape (get objects id)]
+                              (and shape (dsh/shape-is-print-area? shape)))))
+                  (into []))]
 
-         (rx/of (dwu/start-undo-transaction undo-id)
-                (dc/detach-comment-thread ids)
-                (dch/commit-changes changes)
-                (ptk/data-event :layout/update {:ids all-parents :undo-group (:undo-group options)})
-                (dwu/commit-undo-transaction undo-id)))))))
+         (if (not (empty? print-area-ids))
+           (do
+             ;; Abort whole delete if any print-area id is present.
+             (js/console.debug "delete-shapes: aborting delete because selection contains print-area ids"
+                               (clj->js print-area-ids))
+             (rx/empty))
+           ;; proceed with deletion as before when no print-area shapes are included
+           (let [undo-id (or (:undo-id options) (js/Symbol))
+                 [all-parents changes] (-> (pcb/empty-changes it (:id page))
+                                           (cls/generate-delete-shapes fdata page objects ids
+                                                                       {:ignore-touched (:allow-altering-copies options)
+                                                                        :undo-group (:undo-group options)
+                                                                        :undo-id undo-id}))]
+
+             (rx/of (dwu/start-undo-transaction undo-id)
+                    (dc/detach-comment-thread ids)
+                    (dch/commit-changes changes)
+                    (ptk/data-event :layout/update {:ids all-parents :undo-group (:undo-group options)})
+                    (dwu/commit-undo-transaction undo-id)))))))))
 
 (defn create-and-add-shape
   [type frame-x frame-y {:keys [width height] :as attrs}]

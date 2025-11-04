@@ -439,11 +439,25 @@
     (watch [it state _]
       (let [page     (dsh/lookup-page state)
             objects  (:objects page)
+            ;; normalize ids to a set of allowed-duplicate ids (same as before)
             ids (into #{}
                       (comp (map (d/getf objects))
                             (filter #(ctk/allow-duplicate? objects %))
                             (map :id))
                       ids)]
+
+        ;; Abort if any of the supplied ids is a print-area shape.
+        (let [print-area-ids (->> ids
+                                  (filter (fn [id]
+                                            (let [shape (get objects id)]
+                                              (and shape (dsh/shape-is-print-area? shape)))))
+                                  (into []))]
+          (when (seq print-area-ids)
+            (js/console.debug "duplicate-shapes: aborting because ids contain print-area" (clj->js print-area-ids))
+            ;; return empty observable -> abort operation
+            (rx/empty)))
+
+        ;; If we reach here and ids is non-empty proceed as before.
         (when (seq ids)
           (let [obj             (get objects (first ids))
                 delta           (if move-delta?
@@ -525,10 +539,24 @@
      ptk/WatchEvent
      (watch [_ state _]
        (when (or (not move-delta?) (nil? (get-in state [:workspace-local :transform])))
-         (let [selected (dsh/lookup-selected state)]
-           (rx/of (duplicate-shapes selected
-                                    :move-delta? move-delta?
-                                    :alt-duplication? alt-duplication?))))))))
+         (let [page-id (or (:current-page-id state) nil)
+               objects (dsh/lookup-page-objects state page-id)
+               selected (dsh/lookup-selected state)
+               ;; Find any print-area ids in the current selection
+               print-area-ids (->> selected
+                                   (filter (fn [id]
+                                             (let [shape (get objects id)]
+                                               (and shape (dsh/shape-is-print-area? shape)))))
+                                   (into []))]
+           (if (seq print-area-ids)
+             (do
+               (js/console.debug "duplicate-selected: aborting because selection contains print-area" (clj->js print-area-ids))
+               ;; abort the whole operation
+               (rx/empty))
+             ;; otherwise proceed with duplicate
+             (rx/of (duplicate-shapes selected
+                                      :move-delta? move-delta?
+                                      :alt-duplication? alt-duplication?)))))))))
 
 (defn change-hover-state
   [id value]
@@ -555,10 +583,10 @@
             (assoc :workspace-focus-selected focus))))))
 
 (defn toggle-focus-mode
-  "Zoom in on and center viewport on selection; 
+  "Zoom in on and center viewport on selection;
    hide all other layers in viewport and layer panel.
 
-   When in focus mode, exit restoring previous viewport and selection. 
+   When in focus mode, exit restoring previous viewport and selection.
   "
   []
   (ptk/reify ::toggle-focus-mode
@@ -597,7 +625,7 @@
                 (rx/map (comp set keys))
                 (rx/buffer 2 1)
                 (rx/merge-map
-                ;; While focus is active, update it with any new and deleted shapes 
+                ;; While focus is active, update it with any new and deleted shapes
                  (fn [[old-keys new-keys]]
                    (let [removed (set/difference old-keys new-keys)
                          added (set/difference new-keys old-keys)]
