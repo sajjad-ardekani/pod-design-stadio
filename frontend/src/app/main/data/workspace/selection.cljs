@@ -392,16 +392,40 @@
   the displacement and apply it to the third copy. This is useful for doing
   grids or cascades of cloned objects."
   [id-original id-duplicated]
+  (dm/assert!
+   "expected valid uuid for `id-original` and `id-duplicated`"
+   (and (uuid? id-original) (uuid? id-duplicated)))
+
   (ptk/reify ::memorize-duplicated
     ptk/UpdateEvent
     (update [_ state]
-      (assoc-in state [:workspace-local :duplicated] {:id-original id-original
-                                                      :id-duplicated id-duplicated}))
+      ;; Check both shapes in the workspace before memorizing
+      (let [file-id (:current-file-id state)
+            page-id (:current-page-id state)
+            fdata   (dsh/lookup-file-data state file-id)
+            page    (dsh/get-page fdata page-id)
+            objects (:objects page)
+            shape-original  (get objects id-original)
+            shape-duplicated (get objects id-duplicated)]
+
+        ;; Abort if either shape is a print area
+        (if (or (and shape-original (dsh/shape-is-print-area? shape-original))
+                (and shape-duplicated (dsh/shape-is-print-area? shape-duplicated)))
+          (do
+            (js/console.debug
+             "memorize-duplicated: aborting because one of the shapes is a print-area"
+             (clj->js {:original id-original :duplicated id-duplicated}))
+            ;; Abort: return original state (no change)
+            state)
+          ;; Otherwise, record duplication info
+          (assoc-in state [:workspace-local :duplicated]
+                    {:id-original id-original
+                     :id-duplicated id-duplicated}))))
 
     ptk/WatchEvent
     (watch [_ _ stream]
       (let [stopper (rx/filter (ptk/type? ::memorize-duplicated) stream)]
-        (->> (rx/timer 10000) ;; This time may be adjusted after some user testing.
+        (->> (rx/timer 10000) ;; after 10s clear the record unless replaced
              (rx/take-until stopper)
              (rx/map clear-memorize-duplicated))))))
 
