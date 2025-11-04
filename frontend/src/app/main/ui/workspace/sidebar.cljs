@@ -133,15 +133,16 @@
             (if ^boolean design-tokens?
               [{:label (tr "workspace.sidebar.layers")
                 :id "layers"}
-               {:label (tr "workspace.toolbar.assets")
-                :id "assets"}
+;;                {:label (tr "workspace.toolbar.assets")
+;;                 :id "assets"}
 ;;                {:label "Tokens"
 ;;                 :id "tokens"}
                 ]
               [{:label (tr "workspace.sidebar.layers")
                 :id "layers"}
-               {:label (tr "workspace.toolbar.assets")
-                :id "assets"}])))
+;;                {:label (tr "workspace.toolbar.assets")
+;;                 :id "assets"}
+                ])))
 
         aside-class
         (stl/css-case
