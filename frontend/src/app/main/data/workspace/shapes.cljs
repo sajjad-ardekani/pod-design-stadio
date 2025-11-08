@@ -68,6 +68,27 @@
              objects   (dsh/lookup-page-objects state page-id)
              ids       (into [] (filter some?) ids)
 
+             ;; find nearest print-area ancestor for a given id (or nil)
+             find-printarea-ancestor
+             (fn [start-id]
+               (loop [cur start-id]
+                 (let [p (try (cfh/get-parent-id objects cur) (catch :default _ nil))]
+                   (if (and p (not= p cur))
+                     (if (dsh/shape-is-print-area? (get objects p))
+                       p
+                       (recur p))
+                     nil))))
+
+             ;; collect unique ancestors (print-area ids) for the shapes being updated
+             print-area-ancestors
+             (->> ids
+                  (map find-printarea-ancestor)
+                  (remove nil?)
+                  distinct
+                  vec)
+
+             plugin-data-attrs? (boolean (some #(= % :plugin-data) attrs))
+
              xf-update-layout
              (comp
               (map (d/getf objects))
@@ -78,6 +99,7 @@
              (->> (into [] xf-update-layout ids)
                   (not-empty))
 
+             ;; the normal changes object for the primary update
              changes
              (-> (pcb/empty-changes it page-id)
                  (pcb/set-save-undo? save-undo?)
@@ -94,18 +116,134 @@
                    (pcb/set-undo-group undo-group)))
 
              changes
-             (add-undo-group changes state)]
+             (add-undo-group changes state)
 
-         (rx/concat
-          (if (seq (:redo-changes changes))
-            (let [changes (cond-> changes reg-objects? (pcb/resize-parents ids))]
-              (rx/of (dch/commit-changes changes)))
-            (rx/empty))
+             has-main-redo? (seq (:redo-changes changes))
 
-          ;; Update layouts for properties marked
-          (if update-layout-ids
-            (rx/of (ptk/data-event :layout/update {:ids update-layout-ids}))
-            (rx/empty))))))))
+             valid-ancestors (->> print-area-ancestors
+                                  (filter #(and (uuid? %) (get objects %)))
+                                  vec)]
+
+;;          (js/console.log "update-shapes: main-modified-ids ?"
+;;                          (count (:redo-changes changes))
+;;                          "valid-ancestors:" (count valid-ancestors)
+;;                          "plugin-data-attrs?:" plugin-data-attrs?)
+
+         ;; If nothing to do, or plugin-data changes requested, commit main only
+         (if (or (not has-main-redo?) (empty? valid-ancestors) plugin-data-attrs?)
+           (rx/concat
+            (if has-main-redo?
+              (let [c (cond-> changes reg-objects? (pcb/resize-parents ids))]
+                (rx/of (dch/commit-changes c)))
+              (rx/empty))
+            (if update-layout-ids
+              (rx/of (ptk/data-event :layout/update {:ids update-layout-ids}))
+              (rx/empty)))
+           ;; else: commit main changes first, then a safe touch commit for ancestors
+           (let [ ;; compute ids touched by main changes
+                 change-entry-id
+                 (fn [entry]
+                   (or (:id entry)
+                       (get-in entry [:obj :id])
+                       (get-in entry [:redo :id])
+                       nil))
+
+                 main-modified-ids
+                 (->> (:redo-changes changes)
+                      (map change-entry-id)
+                      (remove nil?)
+                      (into #{}))
+
+                 to-touch (->> valid-ancestors
+                               (remove #(contains? main-modified-ids %))
+                               vec)
+
+;;                  _ (js/console.log "update-shapes: main-modified-ids count" (count main-modified-ids)
+;;                                    "valid-ancestors count" (count valid-ancestors)
+;;                                    "to-touch count" (count to-touch))
+                                   ]
+
+             (if (empty? to-touch)
+               ;; nothing left to touch -> commit main only
+               (rx/concat
+                (if has-main-redo?
+                  (let [c (cond-> changes reg-objects? (pcb/resize-parents ids))]
+                    (rx/of (dch/commit-changes c)))
+                  (rx/empty))
+                (if update-layout-ids
+                  (rx/of (ptk/data-event :layout/update {:ids update-layout-ids}))
+                  (rx/empty)))
+               ;; otherwise: create a safe update-fn and commit main then touch separately
+               (let [;; SAFE update function: NEVER inject JS objects or string top-level keys
+                     safe-update-fn
+                     (fn [shape]
+                       (let [existing-pd (or (get shape :plugin-data) {})
+                             existing-map (if (map? existing-pd) existing-pd {})
+                             ;; use a namespaced keyword for top-level shared key
+                             shared-key (keyword "shared/podconverge")
+                             shared-ns   (or (get existing-map shared-key) (get existing-map "shared/podconverge") {})
+                             ;; keep inner keys simple - use a string timestamp (server accepts string/numeric)
+                             shared-updated (assoc (if (map? shared-ns) shared-ns {})
+                                                   "childrenChangeTs" (str (js/Date.now)))
+                             new-pd (assoc existing-map shared-key shared-updated)]
+                         (assoc shape :plugin-data new-pd)))
+
+                     touch-base (-> (pcb/empty-changes it page-id)
+                                    (pcb/set-save-undo? false)
+                                    (pcb/set-stack-undo? false))
+
+                     touch-changes (try
+                                     (cls/generate-update-shapes touch-base
+                                                                 to-touch
+                                                                 safe-update-fn
+                                                                 objects
+                                                                 {:attrs #{:plugin-data}
+                                                                  :with-objects? false})
+                                     (catch :default e
+                                       (do (js/console.error "update-shapes: failed to generate touch-changes" e)
+                                           nil)))]
+
+                 (if (or (nil? touch-changes) (not (seq (:redo-changes touch-changes))))
+                   ;; fallback: commit main only
+                   (do
+;;                      (js/console.warn "update-shapes: no valid touch-changes generated; committing main only")
+                     (rx/concat
+                      (if has-main-redo?
+                        (let [c (cond-> changes reg-objects? (pcb/resize-parents ids))]
+                          (rx/of (dch/commit-changes c)))
+                        (rx/empty))
+                      (if update-layout-ids
+                        (rx/of (ptk/data-event :layout/update {:ids update-layout-ids}))
+                        (rx/empty))))
+                   ;; Commit main first, then touch-changes (separate commits)
+                   (do
+;;                      (js/console.log "update-shapes: committing main changes then touch changes; touched-printareas:" (clj->js to-touch))
+                     (rx/concat
+                      ;; main commit
+                      (if has-main-redo?
+                        (let [c (cond-> changes reg-objects? (pcb/resize-parents ids))]
+                          (rx/of (dch/commit-changes c)))
+                        (rx/empty))
+
+                      ;; touch commit (safe, separate)
+                      (rx/of (dch/commit-changes touch-changes))
+
+                      ;; layout update event after both commits
+                      (if update-layout-ids
+                        (rx/of (ptk/data-event :layout/update {:ids update-layout-ids}))
+                        (rx/empty))))))))))))))
+
+(defn- touch-if-print-area
+  "If `id` exists and is a print-area shape in `objects`, call update-shapes to touch plugin-data."
+  [id objects]
+  (when (and id (dsh/shape-is-print-area? (get objects id)))
+    (update-shapes
+      [id]
+      (fn [obj]
+        (assoc-in obj
+                  [:plugin-data "shared/podconverge" "childrenChangeTs"]
+                  (str (js/Date.now))))
+      {:attrs #{:plugin-data}})))
 
 (defn add-shape
   ([shape]
