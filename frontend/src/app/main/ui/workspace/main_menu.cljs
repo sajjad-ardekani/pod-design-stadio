@@ -895,17 +895,17 @@
        [:span {:class (stl/css :item-name)} (tr "workspace.header.menu.option.preferences")]
        [:span {:class (stl/css :open-arrow)} i/arrow]]
 
-      (when (features/active-feature? @st/state "plugins/runtime")
-        [:> dropdown-menu-item* {:class (stl/css :menu-item)
-                                 :on-click    on-menu-click
-                                 :on-key-down (fn [event]
-                                                (when (kbd/enter? event)
-                                                  (on-menu-click event)))
-                                 :on-pointer-enter on-menu-click
-                                 :data-testid   "plugins"
-                                 :id          "file-menu-plugins"}
-         [:span {:class (stl/css :item-name)} (tr "workspace.plugins.menu.title")]
-         [:span {:class (stl/css :open-arrow)} i/arrow]])
+;;       (when (features/active-feature? @st/state "plugins/runtime")
+;;         [:> dropdown-menu-item* {:class (stl/css :menu-item)
+;;                                  :on-click    on-menu-click
+;;                                  :on-key-down (fn [event]
+;;                                                 (when (kbd/enter? event)
+;;                                                   (on-menu-click event)))
+;;                                  :on-pointer-enter on-menu-click
+;;                                  :data-testid   "plugins"
+;;                                  :id          "file-menu-plugins"}
+;;          [:span {:class (stl/css :item-name)} (tr "workspace.plugins.menu.title")]
+;;          [:span {:class (stl/css :open-arrow)} i/arrow]])
 
       [:div {:class (stl/css :separator)}]
       [:> dropdown-menu-item* {:class (stl/css-case :menu-item true)
