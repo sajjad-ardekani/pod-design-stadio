@@ -584,9 +584,9 @@
        [:*
         [:> menu-separator* {}]
 
-        [:> menu-entry* {:title (tr "workspace.shape.menu.create-component")
-                         :shortcut (sc/get-tooltip :create-component)
-                         :on-click do-add-component}]
+;;         [:> menu-entry* {:title (tr "workspace.shape.menu.create-component")
+;;                          :shortcut (sc/get-tooltip :create-component)
+;;                          :on-click do-add-component}]
         (when (not single?)
           [:> menu-entry* {:title (tr "workspace.shape.menu.create-multiple-components")
                            :on-click do-add-multiple-components}])])

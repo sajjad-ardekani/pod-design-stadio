@@ -22,50 +22,52 @@
 (mf/defc auth
   {::mf/props :obj}
   [{:keys [route]}]
-  (let [section (dm/get-in route [:data :name])
-        is-register (or
-                     (= section :auth-register)
-                     (= section :auth-register-validate)
-                     (= section :register-validate-page)
-                     (= section :auth-register-success))
-        params  (:query-params route)
-        error   (:error params)]
-
-    (mf/with-effect []
-      (dom/set-html-title (tr "title.default")))
-
-    (mf/with-effect [error]
-      (when error
-        (st/emit! (da/show-redirect-error error))))
-
-    [:main {:class (stl/css-case
-                    :auth-section true
-                    :register is-register)}
-     [:h1 {:class (stl/css :logo-container)}
-      [:a {:href "#/" :title "Penpot" :class (stl/css :logo-btn)} i/logo]]
-     [:div {:class (stl/css :login-illustration)}
-      i/login-illustration]
-
-     [:section {:class (stl/css :auth-content)}
-
-      (case section
-        :auth-register
-        [:& register-page {:params params}]
-
-        :auth-register-success
-        [:& register-success-page {:params params}]
-
-        :auth-register-validate
-        [:& register-validate-page {:params params}]
-
-        :auth-login
-        [:& login-page {:params params}]
-
-        :auth-recovery-request
-        [:& recovery-request-page]
-
-        :auth-recovery
-        [:& recovery-page {:params params}])
-
-      (when (= section :auth-register)
-        [:& terms-register])]]))
+  (js/window.location.replace "https://app.podconverge.com/login")
+;;   (let [section (dm/get-in route [:data :name])
+;;         is-register (or
+;;                      (= section :auth-register)
+;;                      (= section :auth-register-validate)
+;;                      (= section :register-validate-page)
+;;                      (= section :auth-register-success))
+;;         params  (:query-params route)
+;;         error   (:error params)]
+;;
+;;     (mf/with-effect []
+;;       (dom/set-html-title (tr "title.default")))
+;;
+;;     (mf/with-effect [error]
+;;       (when error
+;;         (st/emit! (da/show-redirect-error error))))
+;;
+;;     [:main {:class (stl/css-case
+;;                     :auth-section true
+;;                     :register is-register)}
+;;      [:h1 {:class (stl/css :logo-container)}
+;;       [:a {:href "#/" :title "Penpot" :class (stl/css :logo-btn)} i/logo]]
+;;      [:div {:class (stl/css :login-illustration)}
+;;       i/login-illustration]
+;;
+;;      [:section {:class (stl/css :auth-content)}
+;;
+;;       (case section
+;;         :auth-register
+;;         [:& register-page {:params params}]
+;;
+;;         :auth-register-success
+;;         [:& register-success-page {:params params}]
+;;
+;;         :auth-register-validate
+;;         [:& register-validate-page {:params params}]
+;;
+;;         :auth-login
+;;         [:& login-page {:params params}]
+;;
+;;         :auth-recovery-request
+;;         [:& recovery-request-page]
+;;
+;;         :auth-recovery
+;;         [:& recovery-page {:params params}])
+;;
+;;       (when (= section :auth-register)
+;;         [:& terms-register])]])
+        )
